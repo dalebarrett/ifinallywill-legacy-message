@@ -4,17 +4,20 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const Anthropic = require('@anthropic-ai/sdk');
+const { clerkMiddleware, requireAuth } = require('@clerk/express');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
 
 app.use(express.json({ limit: '10mb' }));
-app.use(express.static(__dirname));
 
 // Vercel serverless only allows writes to /tmp; fall back to local tmp/ in dev
 const TMP_DIR = process.env.VERCEL ? '/tmp' : path.join(__dirname, 'tmp');
 const upload = multer({ dest: TMP_DIR });
+
+// Clerk auth middleware — attaches auth state to every request
+app.use(clerkMiddleware());
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -38,8 +41,19 @@ const EMPTY_RESPONSES = {
   check: { label: 'Start here', body: 'You haven\'t written anything yet. Try this: imagine the person who will hear this message. What is the one thing you most want them to know — something they might not already?' }
 };
 
-// ─── AI SUGGESTIONS ──────────────────────────────
-app.post('/api/suggest', async (req, res) => {
+// ─── SERVE HTML WITH CLERK KEY INJECTED ──────────
+app.get('/', (req, res) => {
+  let html = fs.readFileSync(path.join(__dirname, 'legacy_letter.html'), 'utf8');
+  const pk = process.env.CLERK_PUBLISHABLE_KEY || '';
+  html = html.replace(
+    '</head>',
+    `<script>window.__CLERK_PK__="${pk}";</script>\n</head>`
+  );
+  res.type('html').send(html);
+});
+
+// ─── AI SUGGESTIONS (auth required) ─────────────
+app.post('/api/suggest', requireAuth(), async (req, res) => {
   const { mode, text, chapId, chapTitle } = req.body;
 
   if (!text || text.trim().length < 10) {
@@ -80,8 +94,8 @@ app.post('/api/suggest', async (req, res) => {
   }
 });
 
-// ─── TRANSCRIPTION ───────────────────────────────
-app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
+// ─── TRANSCRIPTION (auth required) ──────────────
+app.post('/api/transcribe', requireAuth(), upload.single('audio'), async (req, res) => {
   const tmpPath = req.file ? req.file.path : null;
 
   if (!tmpPath) {
@@ -116,6 +130,9 @@ app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
 function cleanup(filePath) {
   try { if (filePath) fs.unlinkSync(filePath); } catch {}
 }
+
+// ─── STATIC ASSETS (everything except index) ────
+app.use(express.static(__dirname));
 
 // ─── START ───────────────────────────────────────
 app.listen(PORT, () => {

@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Legacy Message — iFinallyWill</title>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&family=Nunito+Sans:wght@400;600;700&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js" type="text/javascript"></script>
 <style>
 :root{
   --navy:#0A2A4A;--navy-d:#071E38;--navy-deep:#04132A;
@@ -453,6 +454,7 @@ input,textarea,select{font-family:inherit;font-size:inherit;color:inherit;border
     <div><span>Legacy Progress</span><b id="top-score-val">0</b></div>
   </div>
   <div class="top-actions">
+    <div id="clerkAuth" style="display:flex;align-items:center;gap:8px"></div>
     <button class="btn-mini" onclick="restartLetter()" title="Wipe all progress and start over" id="restartBtn">↺ Restart</button>
     <button class="btn-mini" onclick="openModal('impact')">📺 Preview impact</button>
     <button class="btn-mini primary" onclick="openModal('share')">↗ Share</button>
@@ -1515,9 +1517,10 @@ async function runAI(mode){
   out.innerHTML = '<div class="ai-out-h">Thinking…</div><p style="opacity:.5">Analyzing your message…</p>';
   out.classList.add('on');
   try {
+    const token = await getAuthToken();
     const resp = await fetch('/api/suggest', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: {'Content-Type': 'application/json', ...(token ? {'Authorization': `Bearer ${token}`} : {})},
       body: JSON.stringify({mode, text: d.text||'', chapId: ch.id, chapTitle: ch.title})
     });
     if (!resp.ok) throw new Error('Server ' + resp.status);
@@ -2559,7 +2562,8 @@ function beginActualRecording(){
         try {
           const fd = new FormData();
           fd.append('audio', blob, filename);
-          const tr = await fetch('/api/transcribe', {method: 'POST', body: fd});
+          const transcribeToken = await getAuthToken();
+          const tr = await fetch('/api/transcribe', {method: 'POST', headers: transcribeToken ? {'Authorization': `Bearer ${transcribeToken}`} : {}, body: fd});
           const td = await tr.json();
           if (td.text && td.text.trim().length > 10) {
             state.chapters[_scopeId].text = td.text.trim();
@@ -3468,6 +3472,48 @@ saveState = function(){
 if (state.welcomeSeen) document.getElementById('welcome').classList.add('gone');
 renderChapterList();
 renderMain();
+
+// ─── CLERK AUTH ───────────────────────────────────
+async function getAuthToken() {
+  return window.__clerk?.session?.getToken() || null;
+}
+
+(async () => {
+  const pk = window.__CLERK_PK__;
+  if (!pk) return; // running locally without server key injection — skip
+
+  try {
+    const clerk = new window.Clerk(pk);
+    await clerk.load();
+    window.__clerk = clerk;
+
+    const authDiv = document.getElementById('clerkAuth');
+
+    function renderClerkAuth() {
+      authDiv.innerHTML = '';
+      if (clerk.user) {
+        clerk.mountUserButton(authDiv);
+      } else {
+        const signInBtn = document.createElement('button');
+        signInBtn.className = 'btn-mini primary';
+        signInBtn.textContent = 'Sign in';
+        signInBtn.onclick = () => clerk.openSignIn({});
+        authDiv.appendChild(signInBtn);
+
+        const signUpBtn = document.createElement('button');
+        signUpBtn.className = 'btn-mini';
+        signUpBtn.textContent = 'Create account';
+        signUpBtn.onclick = () => clerk.openSignUp({});
+        authDiv.appendChild(signUpBtn);
+      }
+    }
+
+    clerk.addListener(renderClerkAuth);
+    renderClerkAuth();
+  } catch(e) {
+    console.warn('Clerk init failed:', e);
+  }
+})();
 </script>
 </body>
 </html>
