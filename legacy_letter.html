@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Legacy Message — iFinallyWill</title>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&family=Nunito+Sans:wght@400;600;700&display=swap" rel="stylesheet"/>
-<script src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js" type="text/javascript"></script>
 <style>
 :root{
   --navy:#0A2A4A;--navy-d:#071E38;--navy-deep:#04132A;
@@ -666,7 +665,10 @@ input,textarea,select{font-family:inherit;font-size:inherit;color:inherit;border
       <div><b>Their answers — written down.</b>Where things are. What you wanted. Who to call. No 3am guessing.</div>
       <div><b>Released on your terms.</b>Birthdays. Graduations. After you're gone. You set the trigger.</div>
     </div>
-    <button onclick="dismissWelcome()">Record my first chapter →</button>
+    <div id="welcomeAuth" style="display:flex;flex-direction:column;gap:10px;margin-bottom:4px">
+      <!-- Clerk auth buttons injected here by JS -->
+      <button onclick="dismissWelcome()" style="opacity:.45;font-size:12px;background:transparent;color:var(--ink-3);text-decoration:underline;padding:4px">Loading sign-in…</button>
+    </div>
     <div class="welcome-privacy" style="font-size:12px;color:var(--muted,#5A6E80);margin-top:12px;line-height:1.55">🔒 Encrypted and private. Released only on your terms — and you can edit, pause, or delete anything, anytime.</div>
     <button class="quick-mode" onclick="startQuickMode()">⚡ Just 2 minutes. One message. Start where you are.</button>
     <div class="social-proof-mini">87% of users finish their first chapter in one sitting.<br>Most-shared message: <i>"Lessons I learned too late."</i></div>
@@ -3475,44 +3477,84 @@ renderMain();
 
 // ─── CLERK AUTH ───────────────────────────────────
 async function getAuthToken() {
-  return window.__clerk?.session?.getToken() || null;
+  try { return await window.Clerk?.session?.getToken() || null; } catch { return null; }
 }
 
-(async () => {
-  const pk = window.__CLERK_PK__;
-  if (!pk) return; // running locally without server key injection — skip
-
-  try {
-    const clerk = new window.Clerk(pk);
-    await clerk.load();
-    window.__clerk = clerk;
-
-    const authDiv = document.getElementById('clerkAuth');
-
-    function renderClerkAuth() {
-      authDiv.innerHTML = '';
-      if (clerk.user) {
-        clerk.mountUserButton(authDiv);
-      } else {
-        const signInBtn = document.createElement('button');
-        signInBtn.className = 'btn-mini primary';
-        signInBtn.textContent = 'Sign in';
-        signInBtn.onclick = () => clerk.openSignIn({});
-        authDiv.appendChild(signInBtn);
-
-        const signUpBtn = document.createElement('button');
-        signUpBtn.className = 'btn-mini';
-        signUpBtn.textContent = 'Create account';
-        signUpBtn.onclick = () => clerk.openSignUp({});
-        authDiv.appendChild(signUpBtn);
-      }
-    }
-
-    clerk.addListener(renderClerkAuth);
-    renderClerkAuth();
-  } catch(e) {
-    console.warn('Clerk init failed:', e);
+// Gate dismissWelcome on auth
+const _origDismissWelcome = dismissWelcome;
+dismissWelcome = function() {
+  if (window.Clerk && !window.Clerk.user) {
+    window.Clerk.openSignIn({});
+    return;
   }
+  _origDismissWelcome();
+};
+
+(async () => {
+  // Wait for the async Clerk script to finish loading
+  if (!window.Clerk) {
+    await new Promise(resolve => window.addEventListener('load', resolve, { once: true }));
+  }
+  if (!window.Clerk) return; // no Clerk script injected (e.g. opening HTML file directly)
+
+  // Initialize using the Clerk CDN pattern (data-clerk-publishable-key already on the script tag)
+  const fallbackPk = window.__CLERK_PK_FALLBACK__;
+  if (fallbackPk) {
+    // Only needed if the server used the jsdelivr fallback path
+    window.Clerk = new window.Clerk(fallbackPk);
+  }
+  await window.Clerk.load();
+
+  const topAuthDiv = document.getElementById('clerkAuth');
+  const welcomeAuthDiv = document.getElementById('welcomeAuth');
+
+  function renderTopAuth() {
+    if (!topAuthDiv) return;
+    topAuthDiv.innerHTML = '';
+    if (window.Clerk.user) {
+      window.Clerk.mountUserButton(topAuthDiv);
+    } else {
+      const b1 = document.createElement('button');
+      b1.className = 'btn-mini primary';
+      b1.textContent = 'Sign in';
+      b1.onclick = () => window.Clerk.openSignIn({});
+      topAuthDiv.appendChild(b1);
+      const b2 = document.createElement('button');
+      b2.className = 'btn-mini';
+      b2.textContent = 'Create account';
+      b2.onclick = () => window.Clerk.openSignUp({});
+      topAuthDiv.appendChild(b2);
+    }
+  }
+
+  function renderWelcomeAuth() {
+    if (!welcomeAuthDiv) return;
+    welcomeAuthDiv.innerHTML = '';
+    if (window.Clerk.user) {
+      const name = window.Clerk.user.firstName || window.Clerk.user.emailAddresses?.[0]?.emailAddress || 'back';
+      const btn = document.createElement('button');
+      btn.style.cssText = 'width:100%;padding:14px 32px;background:var(--navy);color:var(--yellow);border-radius:10px;font-weight:900;font-size:14px;font-family:inherit;cursor:pointer;border:none';
+      btn.textContent = `Continue as ${name} →`;
+      btn.onclick = () => _origDismissWelcome();
+      welcomeAuthDiv.appendChild(btn);
+    } else {
+      const signUp = document.createElement('button');
+      signUp.style.cssText = 'width:100%;padding:14px 32px;background:var(--navy);color:var(--yellow);border-radius:10px;font-weight:900;font-size:14px;font-family:inherit;cursor:pointer;border:none';
+      signUp.textContent = 'Create free account →';
+      signUp.onclick = () => window.Clerk.openSignUp({});
+      welcomeAuthDiv.appendChild(signUp);
+
+      const signIn = document.createElement('button');
+      signIn.style.cssText = 'width:100%;padding:12px 32px;background:#fff;color:var(--navy);border:1.5px solid var(--navy);border-radius:10px;font-weight:800;font-size:13px;font-family:inherit;cursor:pointer';
+      signIn.textContent = 'Sign in';
+      signIn.onclick = () => window.Clerk.openSignIn({});
+      welcomeAuthDiv.appendChild(signIn);
+    }
+  }
+
+  window.Clerk.addListener(() => { renderTopAuth(); renderWelcomeAuth(); });
+  renderTopAuth();
+  renderWelcomeAuth();
 })();
 </script>
 </body>

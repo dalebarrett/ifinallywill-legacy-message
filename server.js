@@ -41,14 +41,22 @@ const EMPTY_RESPONSES = {
   check: { label: 'Start here', body: 'You haven\'t written anything yet. Try this: imagine the person who will hear this message. What is the one thing you most want them to know — something they might not already?' }
 };
 
-// ─── SERVE HTML WITH CLERK KEY INJECTED ──────────
+// ─── SERVE HTML WITH CLERK SCRIPT INJECTED ───────
 app.get('/', (req, res) => {
   let html = fs.readFileSync(path.join(__dirname, 'legacy_letter.html'), 'utf8');
   const pk = process.env.CLERK_PUBLISHABLE_KEY || '';
-  html = html.replace(
-    '</head>',
-    `<script>window.__CLERK_PK__="${pk}";</script>\n</head>`
-  );
+  let tag = '';
+  if (pk) {
+    try {
+      // Derive the Clerk frontend API domain from the publishable key
+      const b64 = pk.replace(/^pk_(test|live)_/, '');
+      const domain = Buffer.from(b64, 'base64').toString('utf8').replace(/\$$/, '');
+      tag = `<script async crossorigin="anonymous" data-clerk-publishable-key="${pk}" src="https://${domain}/npm/@clerk/clerk-js@latest/dist/clerk.browser.js" type="text/javascript"></script>`;
+    } catch {
+      tag = `<script async src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"></script><script>window.__CLERK_PK_FALLBACK__="${pk}";</script>`;
+    }
+  }
+  html = html.replace('</head>', `${tag}\n</head>`);
   res.type('html').send(html);
 });
 
