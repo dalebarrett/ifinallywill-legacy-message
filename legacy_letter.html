@@ -667,7 +667,7 @@ input,textarea,select{font-family:inherit;font-size:inherit;color:inherit;border
     </div>
     <div id="welcomeAuth" style="display:flex;flex-direction:column;gap:10px;margin-bottom:4px">
       <!-- Clerk auth buttons injected here by JS -->
-      <button onclick="dismissWelcome()" style="opacity:.45;font-size:12px;background:transparent;color:var(--ink-3);text-decoration:underline;padding:4px">Loading sign-in…</button>
+      <button disabled style="opacity:.35;font-size:12px;background:transparent;color:var(--ink-3);padding:4px">Loading sign-in…</button>
     </div>
     <div class="welcome-privacy" style="font-size:12px;color:var(--muted,#5A6E80);margin-top:12px;line-height:1.55">🔒 Encrypted and private. Released only on your terms — and you can edit, pause, or delete anything, anytime.</div>
     <button class="quick-mode" onclick="startQuickMode()">⚡ Just 2 minutes. One message. Start where you are.</button>
@@ -1187,18 +1187,20 @@ function renderVoiceMode(d, ch){
   const m = Math.floor(seconds/60), s = seconds%60;
   const time = m + ':' + (s<10?'0':'') + s;
   const isDone = seconds >= 15 || (d.text && d.text.length > 30);
+  // Use _activeRecorder (set by the real MediaRecorder pipeline) to reflect live recording state
+  const isRecording = !!_activeRecorder;
 
   return `
     <div class="rec-stage">
-      <button class="rec-mic ${recordingActive?'live':(isDone?'done':'')}" id="recMic" onclick="toggleRec()">
-        ${recordingActive?'■':(isDone?'✓':'●')}
+      <button class="rec-mic ${isRecording?'live':(isDone?'done':'')}" id="recMic" onclick="toggleRec()">
+        ${isRecording?'■':(isDone?'✓':'●')}
       </button>
       <div class="rec-time">${time}<span class="target">/ ~${ch.target}s</span></div>
       <div class="rec-status">
-        ${recordingActive ? '<b>Recording…</b>Tap to stop' : (isDone ? '<b>Recorded</b>'+seconds+' seconds saved' : '<b>Ready</b>Tap the mic to record')}
+        ${isRecording ? '<b>Recording…</b>Tap to stop' : (isDone ? '<b>Recorded</b>'+seconds+' seconds saved' : '<b>Ready</b>Tap the mic to record')}
       </div>
-      ${recordingActive ? '<div class="rec-wave" id="recWave">' + Array(16).fill('<i></i>').join('') + '</div>' : ''}
-      ${isDone && !recordingActive ? `
+      ${isRecording ? '<div class="rec-wave" id="recWave">' + Array(16).fill('<i></i>').join('') + '</div>' : ''}
+      ${isDone && !isRecording ? `
         <div class="rec-actions">
           <button onclick="toggleRec()">↻ Re-record</button>
           <button onclick="setMode('text')">✏ Add notes</button>
@@ -1469,48 +1471,6 @@ const SAMPLE_TRANSCRIPTS = {
   happens:'If you\'re hearing this, then I\'m gone. I want you to know I made it. I was scared at the end, but I was also at peace, because of how you let me love you. I love you. That\'s the whole message.'
 };
 
-function toggleRec(){
-  const ch = CHAPTERS[currentChapter];
-  if (!state.chapters[ch.id]) state.chapters[ch.id] = {text:'', seconds:0, mode:'voice', delivery:'on_passing'};
-
-  if (recordingActive) {
-    // stop
-    clearInterval(recordTimer);
-    if (waveTimer) clearInterval(waveTimer);
-    recordingActive = false;
-    state.chapters[ch.id].seconds = recordSeconds;
-    if (!state.chapters[ch.id].text || state.chapters[ch.id].text.length < 30) {
-      // populate sample text on first record
-      state.chapters[ch.id].text = SAMPLE_TRANSCRIPTS[ch.id] || 'Voice recording saved (' + recordSeconds + 's). Switch to type mode to refine the transcript.';
-    }
-    saveState();
-    showToast('Recorded — ' + recordSeconds + 's saved');
-    renderMain();
-    renderChapterList();
-  } else {
-    // start
-    recordSeconds = state.chapters[ch.id].seconds || 0;
-    recordingActive = true;
-    renderMain();
-    recordTimer = setInterval(() => {
-      recordSeconds++;
-      const t = Math.floor(recordSeconds/60) + ':' + (recordSeconds%60<10?'0':'') + (recordSeconds%60);
-      const tEl = document.querySelector('.rec-time');
-      if (tEl) tEl.firstChild.textContent = t;
-      // auto-stop at 120s
-      if (recordSeconds >= 120) toggleRec();
-    }, 1000);
-    waveTimer = setInterval(() => {
-      const wave = document.getElementById('recWave');
-      if (wave) {
-        wave.querySelectorAll('i').forEach(i => {
-          i.style.height = (8 + Math.random()*22) + 'px';
-        });
-      }
-    }, 100);
-  }
-}
-
 async function runAI(mode){
   const ch = CHAPTERS[currentChapter];
   const d = state.chapters[ch.id] || {};
@@ -1527,7 +1487,7 @@ async function runAI(mode){
     });
     if (!resp.ok) throw new Error('Server ' + resp.status);
     const r = await resp.json();
-    out.innerHTML = `<div class="ai-out-h"><span>${r.label}</span><span class="x" onclick="document.getElementById('aiOut').classList.remove('on')">\xd7</span></div><p>“${r.body}”</p>${mode==='tighten'&&d.text?`<div class="ai-out-act"><button class="use" onclick="useAI('${escapeAttr(r.body)}')">Use this version</button><button onclick="document.getElementById('aiOut').classList.remove('on')">Keep mine</button></div>`:''}`;
+    out.innerHTML = `<div class=”ai-out-h”><span>${r.label}</span><span class=”x” onclick=”document.getElementById('aiOut').classList.remove('on')”>\xd7</span></div><p>”${r.body}”</p>${(mode==='tighten'||mode==='expand')&&d.text?`<div class=”ai-out-act”><button class=”use” onclick=”useAI('${escapeAttr(r.body)}')”>Use this version</button><button onclick=”document.getElementById('aiOut').classList.remove('on')”>Keep mine</button></div>`:''}`;
   } catch(err) {
     out.innerHTML = `<div class="ai-out-h"><span>Error</span><span class="x" onclick="document.getElementById('aiOut').classList.remove('on')">\xd7</span></div><p>Could not get suggestion — make sure the server is running.</p>`;
     console.error('AI suggest error:', err);
@@ -1702,7 +1662,7 @@ function buildLiving(){
     wrap.appendChild(div);
   });
 }
-function saveLiving(){ saveState(); closeModal(); showToast('Reminders saved'); }
+// saveLiving is defined below (with ICS export as an explicit user action)
 
 function buildDelivery(){
   const list = document.getElementById('deliveryList');
@@ -1749,21 +1709,7 @@ function buildDelivery(){
 }
 
 // ─── INVITE / SHARE ──────────────────────────────
-function invite(type){
-  const labels = {
-    partner: 'Invite sent to your partner. They\'ll get a private link to start their own letter.',
-    parents: 'Invite sent. Free 90 days unlocks for them when they sign up.',
-    public: 'Template copied: "I just recorded what I\'d want my family to hear if something happened. Took twelve minutes." Paste anywhere.'
-  };
-  state.invitedCount++;
-  state.affinaTotal += 25;
-  saveState();
-  renderChapterList();
-  showToast(labels[type]);
-  buildLiving();
-  // refresh affina display
-  document.getElementById('affinaTotal').textContent = '$' + state.affinaTotal;
-}
+// invite() is defined below using the real Web Share API (shareTo)
 
 // ─── TOAST + WELCOME ─────────────────────────────
 let toastTimer;
@@ -1935,7 +1881,7 @@ function renderSection(){
       f.options.forEach((opt, i) => {
         const isSel = selected.indexOf(opt) >= 0;
         inputHTML += '<label class="opt-row' + (isSel?' on':'') + '">'
-          + '<input type="checkbox" value="' + escapeHtml(opt) + '" ' + (isSel?'checked':'') + ' onchange="toggleCheckOption(\'' + sec.id + '\',\'' + f.key + '\',\'' + escapeHtml(opt).replace(/'/g,'&#39;') + '\',this.checked)">'
+          + '<input type="checkbox" value="' + escapeHtml(opt) + '" ' + (isSel?'checked':'') + ' onchange="toggleCheckOption(\'' + sec.id + '\',\'' + f.key + '\',\'' + escapeHtml(opt).replace(/'/g,'&#39;') + '\',this.checked,event)">'
           + '<span class="opt-check"></span>'
           + '<span class="opt-text">' + escapeHtml(opt) + '</span>'
           + '</label>';
@@ -1985,7 +1931,7 @@ function renderSection(){
     + '</div>';
 }
 
-function toggleCheckOption(secId, fieldKey, opt, checked){
+function toggleCheckOption(secId, fieldKey, opt, checked, e){
   if (!state.sections[secId]) state.sections[secId] = {};
   let cur = state.sections[secId][fieldKey];
   if (!Array.isArray(cur)) cur = [];
@@ -1996,7 +1942,7 @@ function toggleCheckOption(secId, fieldKey, opt, checked){
   state.sections[secId][fieldKey] = cur;
   saveState();
   // update visual without full rerender
-  const lbl = event && event.target ? event.target.parentElement : null;
+  const lbl = e && e.target ? e.target.parentElement : null;
   if (lbl) lbl.classList.toggle('on', checked);
   // refresh sidebar fill %
   const sec = SECTIONS.find(s=>s.id===secId);
@@ -2009,31 +1955,6 @@ function toggleCheckOption(secId, fieldKey, opt, checked){
     renderChapterList();
   }
 }
-
-function insertSectionPrompt(secId, fieldKey, promptIdx){
-  const sec = SECTIONS.find(s=>s.id===secId);
-  if (!sec) return;
-  const field = sec.fields.find(f=>f.key===fieldKey);
-  if (!field || !field.prompts) return;
-  const text = field.prompts[promptIdx];
-  if (!text) return;
-  if (!state.sections[secId]) state.sections[secId] = {};
-  const cur = state.sections[secId][fieldKey] || '';
-  if (field.type === 'text') {
-    state.sections[secId][fieldKey] = text;
-  } else {
-    state.sections[secId][fieldKey] = (cur ? String(cur).trim() + '\n' : '') + text + ' ';
-  }
-  saveState();
-  renderSection();
-  renderChapterList();
-  setTimeout(() => {
-    const sel = document.querySelector('[oninput*="' + fieldKey + '"]');
-    if (sel) { sel.focus(); if (sel.setSelectionRange) sel.setSelectionRange(sel.value.length, sel.value.length); }
-  }, 50);
-}
-
-
 
 function insertSectionPrompt(secId, fieldKey, promptIdx){
   const sec = SECTIONS.find(s=>s.id===secId);
@@ -2276,59 +2197,6 @@ function exportTreasureMap(){
 
 
 // ─── MEDIA + PROMPT HELPERS ──────────────────────
-function attachMedia(scope, scopeId, mediaType){
-  // scope: 'chapter' or 'recipient'
-  // scopeId: chapter id or recipient id
-  // mediaType: 'video' | 'audio' | 'photo'
-  const accept = mediaType === 'video' ? 'video/*' : (mediaType === 'audio' ? 'audio/*' : 'image/*');
-  const inp = document.createElement('input');
-  inp.type = 'file';
-  inp.accept = accept;
-  inp.style.display = 'none';
-  inp.onchange = (e) => {
-    const f = e.target.files && e.target.files[0];
-    if (!f) return;
-    const meta = {
-      name: f.name,
-      size: f.size,
-      type: f.type,
-      mediaType: mediaType,
-      addedAt: new Date().toISOString()
-    };
-    if (scope === 'chapter') {
-      if (!state.chapters[scopeId]) state.chapters[scopeId] = {};
-      if (!state.chapters[scopeId].media) state.chapters[scopeId].media = [];
-      state.chapters[scopeId].media.push(meta);
-    } else {
-      if (!state.chapters['people']) state.chapters['people'] = {recipients:{}};
-      if (!state.chapters['people'].recipients) state.chapters['people'].recipients = {};
-      if (!state.chapters['people'].recipients[scopeId]) state.chapters['people'].recipients[scopeId] = {};
-      if (!state.chapters['people'].recipients[scopeId].media) state.chapters['people'].recipients[scopeId].media = [];
-      state.chapters['people'].recipients[scopeId].media.push(meta);
-    }
-    saveState();
-    showToast(mediaType.charAt(0).toUpperCase()+mediaType.slice(1) + ' added — encrypted in FutureVault');
-    renderMain();
-    renderChapterList();
-  };
-  document.body.appendChild(inp);
-  inp.click();
-  setTimeout(() => { try { document.body.removeChild(inp); } catch(e){} }, 1000);
-}
-
-function removeMedia(scope, scopeId, idx){
-  if (scope === 'chapter') {
-    const m = state.chapters[scopeId] && state.chapters[scopeId].media;
-    if (m) m.splice(idx, 1);
-  } else {
-    const r = state.chapters['people'] && state.chapters['people'].recipients && state.chapters['people'].recipients[scopeId];
-    if (r && r.media) r.media.splice(idx, 1);
-  }
-  saveState();
-  renderMain();
-  renderChapterList();
-  showToast('Media removed');
-}
 
 function getMedia(scope, scopeId){
   if (scope === 'chapter') {
@@ -2351,31 +2219,6 @@ function mediaIcon(t){
   if (t === 'audio') return '🎙';
   if (t === 'photo') return '📷';
   return '📎';
-}
-
-function renderMediaBlock(scope, scopeId){
-  const items = getMedia(scope, scopeId);
-  let html = '<div class="media-block"><div class="media-h">📎 Add media to this ' + (scope==='chapter'?'chapter':'message') + '</div>';
-  html += '<p class="media-sub">Record a short video or audio message — or upload photos and documents. Everything stored encrypted in FutureVault.</p>';
-  html += '<div class="media-buttons">';
-  html += '<button class="media-btn primary" onclick="attachMedia(\'' + scope + '\',\'' + scopeId + '\',\'video\')">🎬 Record / upload video</button>';
-  html += '<button class="media-btn" onclick="attachMedia(\'' + scope + '\',\'' + scopeId + '\',\'audio\')">🎙 Record audio</button>';
-  html += '<button class="media-btn" onclick="attachMedia(\'' + scope + '\',\'' + scopeId + '\',\'photo\')">📷 Upload photo</button>';
-  html += '</div>';
-  if (items.length > 0) {
-    html += '<div class="media-list">';
-    items.forEach((m, i) => {
-      html += '<div class="media-item">'
-        + '<span class="mi-ic">' + mediaIcon(m.mediaType) + '</span>'
-        + '<div class="mi-info"><b>' + escapeHtml(m.name) + '</b><span>' + fmtBytes(m.size) + ' · ' + escapeHtml(m.type||m.mediaType) + ' · 🔒 Encrypted in FutureVault</span></div>'
-        + '<button class="mi-x" onclick="removeMedia(\'' + scope + '\',\'' + scopeId + '\',' + i + ')" title="Remove">×</button>'
-        + '</div>';
-    });
-    html += '</div>';
-  }
-  html += '<div class="media-secure">🔒 <b>Secure by default.</b> Encrypted in FutureVault. Released only to this ' + (scope==='chapter'?'chapter\'s recipients':'recipient') + ', on your chosen trigger.</div>';
-  html += '</div>';
-  return html;
 }
 
 function renderStartingPoints(scope, scopeId, prompts){
@@ -2479,6 +2322,7 @@ let _activeRecorder = null;
 let _recStream = null;
 let _recStartTime = 0;
 let _recTimerHandle = null;
+let _recordingScope = null;
 
 async function ensureMediaPerms(constraints){
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -2553,13 +2397,14 @@ function beginActualRecording(){
       const meta = {id, name: filename, type: blob.type, size: blob.size, mediaType: kind, seconds, addedAt: new Date().toISOString(), inIDB: true};
       attachMediaMeta(_scope, _scopeId, meta);
 
-      // Track recording length for score even before transcription
-      if (_scope === 'chapter' && kind === 'audio') {
-        if (!state.chapters[_scopeId]) state.chapters[_scopeId] = {};
-        state.chapters[_scopeId].seconds = seconds;
-        state.chapters[_scopeId].mode = 'voice';
-        saveState();
-        // Auto-transcribe via server
+      // Auto-transcribe audio recordings for both chapters and recipients
+      if (kind === 'audio') {
+        if (_scope === 'chapter') {
+          if (!state.chapters[_scopeId]) state.chapters[_scopeId] = {};
+          state.chapters[_scopeId].seconds = seconds;
+          state.chapters[_scopeId].mode = 'voice';
+          saveState();
+        }
         showToast('Saved — transcribing…');
         try {
           const fd = new FormData();
@@ -2568,7 +2413,16 @@ function beginActualRecording(){
           const tr = await fetch('/api/transcribe', {method: 'POST', headers: transcribeToken ? {'Authorization': `Bearer ${transcribeToken}`} : {}, body: fd});
           const td = await tr.json();
           if (td.text && td.text.trim().length > 10) {
-            state.chapters[_scopeId].text = td.text.trim();
+            const transcript = td.text.trim();
+            if (_scope === 'chapter') {
+              state.chapters[_scopeId].text = transcript;
+            } else {
+              // recipient audio message
+              if (!state.chapters['people']) state.chapters['people'] = {recipients:{}};
+              if (!state.chapters['people'].recipients) state.chapters['people'].recipients = {};
+              if (!state.chapters['people'].recipients[_scopeId]) state.chapters['people'].recipients[_scopeId] = {};
+              state.chapters['people'].recipients[_scopeId].text = transcript;
+            }
             saveState();
             showToast('Transcribed — review in Text tab');
           } else {
@@ -2612,7 +2466,6 @@ function cleanupRecording(){
   hideRecordingOverlay();
 }
 
-let _recordingScope = null;
 function showPreparingOverlay(kind, stream){
   let ov = document.getElementById('recOverlay');
   if (!ov) {
@@ -2882,14 +2735,6 @@ function onSegResults(results){
     ctx.drawImage(_personCanvas, 0, 0, w, h);
 
     _blurFrameCount++;
-    ctx.save();
-    ctx.fillStyle = 'rgba(245,180,0,0.9)';
-    ctx.fillRect(12, 12, 100, 26);
-    ctx.fillStyle = '#0A2A4A';
-    ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, system-ui, sans-serif';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('\ud83c\udf2b blur \u00b7 ' + _blurFrameCount + 'f', 20, 26);
-    ctx.restore();
     if (_blurFrameCount === 1 || _blurFrameCount === 60) {
       console.log('[blur] frame', _blurFrameCount, _blurFilterWorks ? 'native filter' : 'downscale fallback');
     }
@@ -3342,10 +3187,15 @@ function exportRemindersICS(){
   showToast('Calendar reminders downloaded — open .ics file to import');
 }
 
-// override saveLiving to also offer ICS
+// saveLiving: persist state and offer ICS export as an explicit opt-in button
 function saveLiving(){
   saveState();
   closeModal();
+  showToast('Reminders saved');
+}
+
+// Explicit user action to download calendar reminders
+function downloadReminders(){
   setupReminders();
 }
 
@@ -3480,10 +3330,14 @@ async function getAuthToken() {
   try { return await window.Clerk?.session?.getToken() || null; } catch { return null; }
 }
 
-// Gate dismissWelcome on auth
+// Gate dismissWelcome on auth.
+// Block if Clerk hasn't finished loading (window.Clerk undefined) OR if no user is signed in.
 const _origDismissWelcome = dismissWelcome;
 dismissWelcome = function() {
-  if (window.Clerk && !window.Clerk.user) {
+  // Clerk not yet loaded — block entirely
+  if (!window.Clerk) return;
+  // Clerk loaded but no user — open sign-in
+  if (!window.Clerk.user) {
     window.Clerk.openSignIn({});
     return;
   }
@@ -3491,19 +3345,24 @@ dismissWelcome = function() {
 };
 
 (async () => {
-  // Wait for the async Clerk script to finish loading
+  // Wait for the async Clerk script to finish loading.
+  // Check readyState first — the load event may have already fired by the time this runs.
   if (!window.Clerk) {
-    await new Promise(resolve => window.addEventListener('load', resolve, { once: true }));
+    if (document.readyState !== 'complete') {
+      await new Promise(resolve => window.addEventListener('load', resolve, { once: true }));
+    }
   }
   if (!window.Clerk) return; // no Clerk script injected (e.g. opening HTML file directly)
 
-  // Initialize using the Clerk CDN pattern (data-clerk-publishable-key already on the script tag)
+  // Initialize using the Clerk CDN pattern (data-clerk-publishable-key already on the script tag).
+  // The jsdelivr CDN bundle exposes a singleton on window.Clerk — do NOT call `new window.Clerk()`.
+  // If a fallback key was set, call load() with it instead of reassigning window.Clerk.
   const fallbackPk = window.__CLERK_PK_FALLBACK__;
   if (fallbackPk) {
-    // Only needed if the server used the jsdelivr fallback path
-    window.Clerk = new window.Clerk(fallbackPk);
+    await window.Clerk.load({ publishableKey: fallbackPk });
+  } else {
+    await window.Clerk.load();
   }
-  await window.Clerk.load();
 
   const topAuthDiv = document.getElementById('clerkAuth');
   const welcomeAuthDiv = document.getElementById('welcomeAuth');
