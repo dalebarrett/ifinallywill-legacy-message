@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const Anthropic = require('@anthropic-ai/sdk');
 const OpenAI = require('openai');
-const { clerkMiddleware, getAuth } = require('@clerk/express');
+const { clerkMiddleware, getAuth, clerkClient } = require('@clerk/express');
 
 // ─── STARTUP GUARDS ──────────────────────────────────
 if (!process.env.CLERK_SECRET_KEY) {
@@ -211,6 +211,132 @@ app.post('/api/transcribe', requireAuth, upload.single('audio'), async (req, res
 
 function cleanup(filePath) {
   try { if (filePath) fs.unlinkSync(filePath); } catch {}
+}
+
+// ─── CLOUD STATE SAVE ────────────────────────────
+app.post('/api/state/save', requireAuth, async (req, res) => {
+  const { userId } = getAuth(req);
+  const { state } = req.body;
+  if (!state || typeof state !== 'object') {
+    return res.status(400).json({ error: 'Missing state object' });
+  }
+  try {
+    await clerkClient.users.updateUserMetadata(userId, {
+      privateMetadata: { legacyLetterState: state, savedAt: new Date().toISOString() }
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('State save error:', err.message);
+    res.status(500).json({ error: 'Failed to save state' });
+  }
+});
+
+// ─── CLOUD STATE LOAD ────────────────────────────
+app.get('/api/state/load', requireAuth, async (req, res) => {
+  const { userId } = getAuth(req);
+  try {
+    const user = await clerkClient.users.getUser(userId);
+    const pm = user.privateMetadata || {};
+    res.json({ state: pm.legacyLetterState || null, savedAt: pm.savedAt || null });
+  } catch (err) {
+    console.error('State load error:', err.message);
+    res.status(500).json({ error: 'Failed to load state' });
+  }
+});
+
+// ─── DEAD MAN'S SWITCH CHECK-IN ──────────────────
+app.post('/api/checkin', requireAuth, async (req, res) => {
+  const { userId } = getAuth(req);
+  try {
+    const user = await clerkClient.users.getUser(userId);
+    const pm = user.privateMetadata || {};
+    await clerkClient.users.updateUserMetadata(userId, {
+      privateMetadata: { ...pm, lastCheckin: new Date().toISOString() }
+    });
+    res.json({ ok: true, checkedIn: new Date().toISOString() });
+  } catch (err) {
+    console.error('Check-in error:', err.message);
+    res.status(500).json({ error: 'Check-in failed' });
+  }
+});
+
+app.get('/api/checkin', requireAuth, async (req, res) => {
+  const { userId } = getAuth(req);
+  try {
+    const user = await clerkClient.users.getUser(userId);
+    const pm = user.privateMetadata || {};
+    res.json({ lastCheckin: pm.lastCheckin || null });
+  } catch (err) {
+    console.error('Check-in status error:', err.message);
+    res.status(500).json({ error: 'Failed to get check-in status' });
+  }
+});
+
+// ─── EMAIL DELIVERY ───────────────────────────────
+app.post('/api/send', requireAuth, async (req, res) => {
+  const { to, recipientName, chapters, senderName } = req.body;
+  if (!to || !Array.isArray(to) || to.length === 0) {
+    return res.status(400).json({ error: 'Missing recipient email address' });
+  }
+  if (!process.env.RESEND_API_KEY) {
+    return res.status(503).json({ error: 'Email delivery not configured — set RESEND_API_KEY.' });
+  }
+  const { Resend } = require('resend');
+  const resendClient = new Resend(process.env.RESEND_API_KEY);
+  const emailHtml = buildLegacyLetterEmail({ senderName, recipientName, chapters });
+  try {
+    const { data, error } = await resendClient.emails.send({
+      from: `Legacy Message <noreply@${process.env.EMAIL_FROM_DOMAIN || 'ifinallywill.com'}>`,
+      to,
+      subject: `A personal message from ${senderName || 'someone who loves you'}`,
+      html: emailHtml
+    });
+    if (error) throw new Error(error.message || JSON.stringify(error));
+    res.json({ ok: true, id: data?.id });
+  } catch (err) {
+    console.error('Email send error:', err.message);
+    res.status(500).json({ error: 'Failed to send email: ' + err.message });
+  }
+});
+
+function buildLegacyLetterEmail({ senderName, recipientName, chapters }) {
+  const name = htmlEncode(senderName || 'Someone who loves you');
+  const recipient = htmlEncode(recipientName || 'you');
+  const chaptersHtml = (chapters || [])
+    .filter(ch => ch.text && ch.text.trim().length > 20)
+    .map(ch => `
+    <div style="margin-bottom:28px;padding-bottom:28px;border-bottom:1px solid #E8EDF2">
+      <div style="font-size:10px;font-weight:800;color:#8098A8;text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px">${htmlEncode(ch.chapterTitle || '')}</div>
+      <div style="font-size:15px;line-height:1.8;color:#1A2F42;white-space:pre-wrap">${htmlEncode(ch.text)}</div>
+    </div>`).join('');
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A message for ${recipient}</title></head>
+<body style="margin:0;padding:32px 16px;background:#F2F5F9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,sans-serif">
+  <div style="max-width:580px;margin:0 auto;background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 4px 40px rgba(10,42,74,.13)">
+    <div style="background:linear-gradient(135deg,#0A2A4A 0%,#071E38 100%);padding:42px 48px 36px;text-align:center">
+      <div style="display:inline-block;background:rgba(245,180,0,.15);border:1px solid rgba(245,180,0,.4);border-radius:20px;padding:4px 14px;margin-bottom:16px">
+        <span style="color:#F5B800;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase">Legacy Message</span>
+      </div>
+      <h1 style="color:#fff;font-size:26px;font-weight:900;margin:0 0 10px;line-height:1.3">A message from<br>${name}</h1>
+      <p style="color:rgba(255,255,255,.6);font-size:13px;margin:0">Written with love, for ${recipient}</p>
+    </div>
+    <div style="padding:36px 48px 28px">
+      <p style="font-size:14px;color:#5A6E80;font-style:italic;border-left:3px solid #F5B800;padding-left:14px;margin:0 0 28px;line-height:1.6">
+        This is a personal message that ${name} prepared for you. Read it in a quiet moment.
+      </p>
+      ${chaptersHtml || '<p style="color:#8098A8;font-style:italic;font-size:14px">No messages were included.</p>'}
+    </div>
+    <div style="background:#F2F5F9;padding:22px 48px;text-align:center;border-top:1px solid #E2EBF0">
+      <p style="font-size:11px;color:#8098A8;margin:0;line-height:1.7">
+        Delivered by <strong style="color:#0A2A4A">Legacy Message</strong> · iFinallyWill.com<br>
+        This message was written and sealed by ${name}.
+      </p>
+    </div>
+  </div>
+</body></html>`;
 }
 
 // ─── STATIC ASSETS (only from public/ subdir) ────

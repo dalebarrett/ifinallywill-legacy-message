@@ -13,7 +13,8 @@
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "multer": "^1.4.5-lts.1",
-    "openai": "^4.52.7"
+    "openai": "^4.52.7",
+    "resend": "^6.12.4"
   },
   "devDependencies": {
     "@clerk/testing": "^2.0.35",

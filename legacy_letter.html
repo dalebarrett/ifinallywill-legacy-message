@@ -436,7 +436,76 @@ input,textarea,select{font-family:inherit;font-size:inherit;color:inherit;border
 .next-step button:hover{transform:translateY(-1px);background:var(--navy-d)}
 .revisit-note{background:var(--yellow-pale);border-color:rgba(245,180,0,.72);font-size:13px}
 </style>
-<style id="ifw-upgrades">@media (prefers-reduced-motion: reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}</style></head>
+<style id="ifw-upgrades">@media (prefers-reduced-motion: reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}</style>
+<style id="killer-features">
+/* ── CLOUD SYNC ── */
+.cloud-sync-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#22C55E;margin-left:6px;vertical-align:middle;flex-shrink:0;transition:background .3s}
+.cloud-sync-dot.syncing{background:#F5B800;animation:pulse .8s infinite alternate}
+.cloud-sync-dot.err{background:#EF4444}
+.cloud-sync-dot.offline{background:#94A3B8}
+@keyframes pulse{0%{opacity:.5}100%{opacity:1}}
+
+/* ── LETTER LOCK ── */
+.lock-banner{position:fixed;bottom:0;left:0;right:0;background:linear-gradient(90deg,#04132A,#0A2A4A);color:#fff;padding:13px 24px;display:flex;align-items:center;justify-content:center;gap:16px;font-size:13px;font-weight:700;z-index:200;border-top:3px solid #F5B800;transform:translateY(100%);transition:transform .4s cubic-bezier(.4,0,.2,1)}
+.lock-banner.on{transform:translateY(0)}
+.lock-banner .seal-icon{font-size:18px}
+.lock-banner .lock-text{color:rgba(255,255,255,.9)}
+.lock-banner .lock-date{color:#F5B800;font-weight:900}
+.lock-banner .unlock-btn{padding:7px 15px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:8px;font-weight:800;font-size:11px;cursor:pointer;letter-spacing:.04em;text-transform:uppercase}
+.lock-banner .unlock-btn:hover{background:rgba(255,255,255,.2)}
+.locked-overlay{position:absolute;inset:0;background:rgba(255,255,255,.7);backdrop-filter:blur(2px);border-radius:12px;display:flex;align-items:center;justify-content:center;z-index:10;font-size:14px;font-weight:800;color:var(--navy);gap:8px;pointer-events:all}
+
+/* ── CONFETTI ── */
+@keyframes confettiFall{0%{transform:translateY(-30px) rotate(0deg);opacity:1}85%{opacity:.9}100%{transform:translateY(105vh) rotate(720deg);opacity:0}}
+.confetti-piece{position:fixed;width:9px;height:9px;border-radius:2px;top:-30px;animation:confettiFall linear forwards;pointer-events:none;z-index:9999}
+
+/* ── MODAL ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(4,19,42,.6);display:flex;align-items:center;justify-content:center;z-index:500;opacity:0;pointer-events:none;transition:opacity .2s}
+.modal-overlay.on{opacity:1;pointer-events:all}
+.modal-box{background:#fff;border-radius:18px;max-width:620px;width:92%;max-height:88vh;overflow-y:auto;box-shadow:0 24px 80px rgba(10,42,74,.28);display:flex;flex-direction:column}
+.modal-header{padding:22px 26px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.modal-header h3{margin:0;font-size:17px;color:var(--navy);font-family:'Nunito',sans-serif;font-weight:900}
+.modal-close{background:none;border:none;font-size:22px;cursor:pointer;color:var(--ink-3);line-height:1;padding:0 4px;transition:color .15s}
+.modal-close:hover{color:var(--navy)}
+.modal-body{padding:22px 26px;flex:1}
+.email-from-line{font-size:12px;color:var(--ink-3);font-weight:700;margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--line)}
+.email-chapter-preview{margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid var(--line)}
+.email-chapter-preview:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0}
+.email-chapter-preview .ep-label{font-size:10px;font-weight:800;color:var(--ink-4);text-transform:uppercase;letter-spacing:.09em;margin-bottom:7px}
+.email-chapter-preview .ep-body{font-size:13px;line-height:1.65;color:var(--ink)}
+.modal-footer{padding:16px 26px;border-top:1px solid var(--line);display:flex;gap:10px;justify-content:flex-end;flex-shrink:0;flex-wrap:wrap}
+.modal-footer button{padding:10px 20px;border-radius:9px;font-weight:800;font-size:12px;cursor:pointer;border:none;letter-spacing:.02em}
+.btn-send-now{background:var(--navy);color:var(--yellow)}
+.btn-send-now:hover{background:var(--navy-d)}
+.btn-modal-cancel{background:#fff;border:1px solid var(--line-2)!important;color:var(--navy)}
+
+/* ── DMS WIDGET ── */
+.dms-widget{padding:14px;background:var(--bg);border-radius:12px;margin:0;border:1px solid var(--line)}
+.dms-widget .dms-label{font-family:'Nunito';font-weight:900;color:var(--navy);font-size:13px;display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.dms-widget .dms-status{font-size:11px;color:var(--ink-3);font-weight:600;margin-bottom:9px;line-height:1.4}
+.dms-widget .dms-ok{color:#16a34a;font-weight:800}
+.dms-widget .dms-warn{color:#d97706;font-weight:800}
+.dms-widget .dms-danger{color:#dc2626;font-weight:800}
+.dms-widget button.dms-btn{width:100%;padding:8px;background:var(--navy);color:var(--yellow);border-radius:8px;font-weight:800;font-size:11px;letter-spacing:.04em;text-transform:uppercase;border:none;cursor:pointer}
+.dms-widget button.dms-btn:hover{background:var(--navy-d)}
+
+/* ── SEND EMAIL CARD ── */
+.send-email-card{background:linear-gradient(135deg,#0A2A4A,#071E38);border-radius:14px;padding:16px;margin-top:12px}
+.send-email-card .sec-title{display:block;font-family:'Nunito';font-weight:900;font-size:13px;color:#F5B800;margin-bottom:5px}
+.send-email-card .sec-sub{font-size:11px;color:rgba(255,255,255,.7);line-height:1.45;margin-bottom:11px;font-weight:600}
+.sec-btns{display:flex;gap:7px;flex-direction:column}
+.sec-btns button{padding:8px 10px;border-radius:8px;font-weight:800;font-size:11px;letter-spacing:.04em;text-transform:uppercase;border:none;cursor:pointer}
+.btn-email-preview{background:rgba(255,255,255,.12);color:#fff}
+.btn-email-preview:hover{background:rgba(255,255,255,.2)}
+.btn-email-lock{background:#F5B800;color:#0A2A4A}
+.btn-email-lock:hover{filter:brightness(1.08)}
+
+/* ── WORD COUNT SUMMARY ── */
+.total-words-bar{text-align:center;font-size:11px;font-weight:700;color:var(--ink-4);padding:5px 0 8px;display:flex;align-items:center;justify-content:center;gap:6px}
+.total-words-bar .tw-num{font-family:'Nunito';font-weight:900;color:var(--navy);font-size:14px}
+.total-words-bar .tw-read{color:var(--ink-3)}
+</style>
+</head>
 <body>
 
 <!-- TOP BAR -->
@@ -548,8 +617,25 @@ input,textarea,select{font-family:inherit;font-size:inherit;color:inherit;border
     <div class="share-box">
       <b>Share the idea, not the content</b>
       <p>Invite your spouse to record theirs — so your kids hear from both of you. <span style="opacity:.75">You’ll also earn $25 Affina cashback when they finish.</span></p>
-      <button onclick="openModal('share')">↗ Invite someone</button>
+      <button onclick="openModal(‘share’)">↗ Invite someone</button>
       <div class="share-affina">+<span>$25</span> per completion via Affina</div>
+    </div>
+
+    <!-- DEAD MAN’S SWITCH -->
+    <div class="dms-widget" id="dmsWidget" style="display:none;margin-top:12px">
+      <div class="dms-label">🕰 Dead Man’s Switch <span class="cloud-sync-dot" id="dmsDot" style="display:none"></span></div>
+      <div class="dms-status" id="dmsStatus">Loading…</div>
+      <button class="dms-btn" onclick="doCheckin()" id="dmsBtn">✓ Check in now</button>
+    </div>
+
+    <!-- SEND EMAIL -->
+    <div class="send-email-card" id="sendEmailCard" style="display:none">
+      <span class="sec-title">📬 Deliver Your Letter</span>
+      <p class="sec-sub">Preview and send your letter to a loved one by email.</p>
+      <div class="sec-btns">
+        <button class="btn-email-preview" onclick="openEmailPreview()">👁 Preview email</button>
+        <button class="btn-email-lock" onclick="openSendEmailModal()">✉ Send to a recipient</button>
+      </div>
     </div>
   </aside>
 </div>
@@ -3414,7 +3500,427 @@ dismissWelcome = function() {
   window.Clerk.addListener(() => { renderTopAuth(); renderWelcomeAuth(); });
   renderTopAuth();
   renderWelcomeAuth();
+
+  // ── CLOUD SYNC: load from cloud after auth ────────
+  if (window.Clerk.user) {
+    _initCloudFeatures();
+  }
+  window.Clerk.addListener(({ user }) => {
+    if (user) _initCloudFeatures();
+    else _cloudFeaturesHidden();
+  });
 })();
+
+// ═══════════════════════════════════════════════════
+// KILLER FEATURES
+// ═══════════════════════════════════════════════════
+
+// ─── CLOUD SYNC ──────────────────────────────────
+let _cloudSyncTimer = null;
+let _cloudInitDone = false;
+let _lastCloudSaveScore = -1;
+
+async function _getToken() {
+  try { return await window.Clerk?.session?.getToken() || null; } catch { return null; }
+}
+
+async function _initCloudFeatures() {
+  if (_cloudInitDone) return;
+  _cloudInitDone = true;
+
+  // Show server-side panels
+  const dmsEl = document.getElementById('dmsWidget');
+  const sendEl = document.getElementById('sendEmailCard');
+  if (dmsEl) dmsEl.style.display = 'block';
+  if (sendEl) sendEl.style.display = 'block';
+
+  // Load cloud state (if newer than local)
+  try {
+    const token = await _getToken();
+    if (!token) return;
+    const resp = await fetch('/api/state/load', { headers: { 'Authorization': 'Bearer ' + token } });
+    if (resp.ok) {
+      const { state: cloudState, savedAt } = await resp.json();
+      if (cloudState && savedAt) {
+        const localTs = state._savedAt || 0;
+        const cloudTs = new Date(savedAt).getTime();
+        if (cloudTs > localTs) {
+          // Merge: keep cloud state but add welcoming message
+          const name = window.Clerk?.user?.firstName;
+          Object.assign(state, cloudState);
+          if (!state.welcomeSeen) state.welcomeSeen = true;
+          saveState();
+          renderChapterList();
+          renderMain();
+          if (name) showToast('✓ Loaded your saved letter, ' + name);
+        }
+      }
+    }
+  } catch (e) { /* non-fatal */ }
+
+  // Wire auto-save to cloud
+  const _origSave = saveState;
+  saveState = function() {
+    state._savedAt = Date.now();
+    _origSave();
+    _scheduleCloudSave();
+  };
+
+  // Load DMS status
+  _refreshDmsStatus();
+
+  // Apply lock if state says so
+  if (state.locked) _applyLockUI();
+
+  // Check confetti milestone
+  const sc = calcScore();
+  _lastCloudSaveScore = sc.total;
+}
+
+function _cloudFeaturesHidden() {
+  const dmsEl = document.getElementById('dmsWidget');
+  const sendEl = document.getElementById('sendEmailCard');
+  if (dmsEl) dmsEl.style.display = 'none';
+  if (sendEl) sendEl.style.display = 'none';
+}
+
+function _scheduleCloudSave() {
+  if (_cloudSyncTimer) clearTimeout(_cloudSyncTimer);
+  _setCloudDot('syncing');
+  _cloudSyncTimer = setTimeout(_doCloudSave, 3000);
+}
+
+async function _doCloudSave() {
+  try {
+    const token = await _getToken();
+    if (!token) { _setCloudDot('offline'); return; }
+    const resp = await fetch('/api/state/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ state })
+    });
+    if (resp.ok) {
+      _setCloudDot('ok');
+      // Check confetti on score milestone
+      const sc = calcScore();
+      if (sc.total >= 100 && _lastCloudSaveScore < 100) _triggerConfetti();
+      _lastCloudSaveScore = sc.total;
+    } else {
+      _setCloudDot('err');
+    }
+  } catch (e) {
+    _setCloudDot('err');
+  }
+}
+
+function _setCloudDot(status) {
+  const ind = document.getElementById('saveIndicator');
+  if (!ind) return;
+  // Inject/update cloud dot inside the save indicator
+  let dot = ind.querySelector('.cloud-sync-dot');
+  if (!dot) {
+    dot = document.createElement('span');
+    dot.className = 'cloud-sync-dot';
+    dot.title = 'Cloud sync';
+    ind.appendChild(dot);
+  }
+  dot.className = 'cloud-sync-dot' + (status !== 'ok' ? ' ' + status : '');
+}
+
+// ─── CONFETTI ────────────────────────────────────
+const CONFETTI_COLORS = ['#F5B800','#0A2A4A','#22C55E','#EF4444','#8B5CF6','#0EA5E9','#F97316'];
+let _confettiDone = false;
+
+function _triggerConfetti() {
+  if (_confettiDone) return;
+  _confettiDone = true;
+  showToast('🎉 Your legacy letter is complete! 100/100');
+  for (let i = 0; i < 90; i++) {
+    setTimeout(() => {
+      const el = document.createElement('div');
+      el.className = 'confetti-piece';
+      el.style.cssText = [
+        'left:' + (Math.random() * 100) + 'vw',
+        'background:' + CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+        'animation-duration:' + (2.2 + Math.random() * 1.8) + 's',
+        'animation-delay:' + (i * 30) + 'ms',
+        'width:' + (6 + Math.random() * 8) + 'px',
+        'height:' + (6 + Math.random() * 8) + 'px',
+        'border-radius:' + (Math.random() > 0.5 ? '50%' : '2px')
+      ].join(';');
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 5500);
+    }, i * 20);
+  }
+}
+
+// ─── LETTER LOCK ─────────────────────────────────
+function lockLetter() {
+  if (state.locked) { showToast('Already sealed'); return; }
+  const sc = calcScore();
+  if (sc.total < 30) {
+    showToast('Add more content before sealing (need ≥ 30/100)');
+    return;
+  }
+  if (!confirm('Seal this letter?\n\nYou can still unlock and edit later, but this marks it as complete and ready to deliver.')) return;
+  state.locked = true;
+  state.lockedAt = new Date().toISOString();
+  saveState();
+  _applyLockUI();
+  showToast('🔒 Letter sealed on ' + new Date().toLocaleDateString());
+}
+
+function unlockLetter() {
+  if (!confirm('Unlock this letter for editing?')) return;
+  state.locked = false;
+  state.lockedAt = null;
+  saveState();
+  _applyLockUI();
+  showToast('Letter unlocked — you can edit again');
+}
+
+function _applyLockUI() {
+  const banner = document.getElementById('lockBanner');
+  if (!banner) return;
+  if (state.locked && state.lockedAt) {
+    document.getElementById('lockDate').textContent = new Date(state.lockedAt).toLocaleDateString(undefined, {year:'numeric',month:'long',day:'numeric'});
+    banner.classList.add('on');
+  } else {
+    banner.classList.remove('on');
+  }
+}
+
+// ─── DEAD MAN'S SWITCH ───────────────────────────
+const DMS_WARN_DAYS = 30;
+const DMS_DANGER_DAYS = 60;
+
+async function _refreshDmsStatus() {
+  const statusEl = document.getElementById('dmsStatus');
+  const dot = document.getElementById('dmsDot');
+  if (!statusEl) return;
+  try {
+    const token = await _getToken();
+    if (!token) return;
+    const resp = await fetch('/api/checkin', { headers: { 'Authorization': 'Bearer ' + token } });
+    if (!resp.ok) return;
+    const { lastCheckin } = await resp.json();
+    if (dot) dot.style.display = 'inline-block';
+    if (!lastCheckin) {
+      statusEl.innerHTML = '<span class="dms-warn">Never checked in.</span> Check in to confirm you\'re here so your letter isn\'t sent prematurely.';
+    } else {
+      const days = Math.floor((Date.now() - new Date(lastCheckin).getTime()) / 86400000);
+      const dateStr = new Date(lastCheckin).toLocaleDateString();
+      if (days < DMS_WARN_DAYS) {
+        statusEl.innerHTML = '<span class="dms-ok">✓ Active</span> · Last check-in ' + days + 'd ago (' + dateStr + ')';
+        if (dot) dot.className = 'cloud-sync-dot';
+      } else if (days < DMS_DANGER_DAYS) {
+        statusEl.innerHTML = '<span class="dms-warn">⚠ ' + days + ' days</span> since last check-in. Check in to prevent early delivery.';
+        if (dot) dot.className = 'cloud-sync-dot syncing';
+      } else {
+        statusEl.innerHTML = '<span class="dms-danger">🚨 ' + days + ' days</span> — delivery trigger approaching. Check in now!';
+        if (dot) dot.className = 'cloud-sync-dot err';
+      }
+    }
+  } catch (e) { /* non-fatal */ }
+}
+
+async function doCheckin() {
+  const btn = document.getElementById('dmsBtn');
+  if (btn) { btn.textContent = 'Checking in…'; btn.disabled = true; }
+  try {
+    const token = await _getToken();
+    if (!token) throw new Error('Not signed in');
+    const resp = await fetch('/api/checkin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }
+    });
+    if (!resp.ok) throw new Error('Server error');
+    showToast('✓ Checked in — see you next time');
+    await _refreshDmsStatus();
+  } catch (e) {
+    showToast('Check-in failed: ' + e.message);
+  } finally {
+    if (btn) { btn.textContent = '✓ Check in now'; btn.disabled = false; }
+  }
+}
+
+// ─── EMAIL PREVIEW + SEND ────────────────────────
+let _emailPreviewMode = false; // true = preview only, false = send
+
+function _buildEmailChapters() {
+  const result = [];
+  CHAPTERS.forEach(ch => {
+    if (ch.id === 'people') {
+      const peopleData = state.chapters['people'] || { recipients: {} };
+      state.recipients.forEach(r => {
+        const rd = (peopleData.recipients || {})[r.id];
+        if (rd && rd.text && rd.text.trim().length > 20) {
+          result.push({ chapterTitle: 'For ' + r.name, text: rd.text });
+        }
+      });
+    } else {
+      const d = state.chapters[ch.id];
+      if (d && d.text && d.text.trim().length > 20) {
+        result.push({ chapterTitle: ch.title, text: d.text });
+      }
+    }
+  });
+  return result;
+}
+
+function openEmailPreview() {
+  _emailPreviewMode = true;
+  _openEmailModalInternal();
+}
+
+function openSendEmailModal() {
+  _emailPreviewMode = false;
+  _openEmailModalInternal();
+}
+
+function _openEmailModalInternal() {
+  const modal = document.getElementById('emailModal');
+  const body = document.getElementById('emailModalBody');
+  const sendBtn = document.getElementById('emailSendBtn');
+  if (!modal || !body) return;
+
+  const chapters = _buildEmailChapters();
+  const name = window.Clerk?.user?.firstName || window.Clerk?.user?.emailAddresses?.[0]?.emailAddress || 'You';
+
+  if (chapters.length === 0) {
+    body.innerHTML = '<p style="color:var(--ink-3);font-style:italic;text-align:center;padding:20px 0">Write at least one chapter before previewing your email.</p>';
+  } else {
+    body.innerHTML = `
+      <div class="email-from-line">From: <b>${escapeHTML(name)}</b> · ${chapters.length} chapter${chapters.length===1?'':'s'} · ${_totalWords()} words total</div>
+      ${chapters.map(ch => `
+        <div class="email-chapter-preview">
+          <div class="ep-label">${escapeHTML(ch.chapterTitle)}</div>
+          <div class="ep-body">${escapeHTML(ch.text.slice(0, 300))}${ch.text.length > 300 ? '…' : ''}</div>
+        </div>`).join('')}
+      ${!_emailPreviewMode ? `
+        <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--line)">
+          <label style="font-size:12px;font-weight:800;color:var(--navy);display:block;margin-bottom:6px">Send to (email address)</label>
+          <input id="emailTo" type="email" placeholder="recipient@example.com" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--line-2);font-size:13px;font-weight:600;box-sizing:border-box">
+          <label style="font-size:12px;font-weight:800;color:var(--navy);display:block;margin:10px 0 6px">Recipient name (for the greeting)</label>
+          <input id="emailRecipName" type="text" placeholder="e.g. Sarah" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--line-2);font-size:13px;font-weight:600;box-sizing:border-box">
+        </div>` : ''}
+    `;
+  }
+
+  if (sendBtn) sendBtn.style.display = _emailPreviewMode ? 'none' : 'inline-flex';
+  modal.classList.add('on');
+}
+
+function closeEmailModal() {
+  const modal = document.getElementById('emailModal');
+  if (modal) modal.classList.remove('on');
+}
+
+async function sendEmailNow() {
+  const toEl = document.getElementById('emailTo');
+  const nameEl = document.getElementById('emailRecipName');
+  const sendBtn = document.getElementById('emailSendBtn');
+  if (!toEl) return;
+  const to = toEl.value.trim();
+  if (!to || !to.includes('@')) { showToast('Enter a valid email address'); toEl.focus(); return; }
+
+  const chapters = _buildEmailChapters();
+  const senderName = window.Clerk?.user?.firstName || window.Clerk?.user?.emailAddresses?.[0]?.emailAddress || '';
+
+  if (sendBtn) { sendBtn.textContent = 'Sending…'; sendBtn.disabled = true; }
+  try {
+    const token = await _getToken();
+    const resp = await fetch('/api/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': 'Bearer ' + token } : {}) },
+      body: JSON.stringify({ to: [to], recipientName: nameEl ? nameEl.value.trim() : '', chapters, senderName })
+    });
+    const result = await resp.json();
+    if (!resp.ok) throw new Error(result.error || 'Server error');
+    closeEmailModal();
+    showToast('✉ Email sent to ' + to);
+  } catch (e) {
+    showToast('Send failed: ' + e.message);
+  } finally {
+    if (sendBtn) { sendBtn.textContent = 'Send email now →'; sendBtn.disabled = false; }
+  }
+}
+
+function _totalWords() {
+  let total = 0;
+  CHAPTERS.forEach(ch => {
+    if (ch.id === 'people') {
+      const pd = state.chapters['people'] || { recipients: {} };
+      state.recipients.forEach(r => {
+        const rd = (pd.recipients || {})[r.id];
+        if (rd && rd.text) total += rd.text.trim().split(/\s+/).filter(Boolean).length;
+      });
+    } else {
+      const d = state.chapters[ch.id];
+      if (d && d.text) total += d.text.trim().split(/\s+/).filter(Boolean).length;
+    }
+  });
+  return total;
+}
+
+function escapeHTML(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─── LOCK BUTTON IN SCORE AREA ──────────────────
+// Inject a "Seal letter" button into the right rail after the score
+(function injectLockButton() {
+  const btn = document.createElement('button');
+  btn.style.cssText = 'width:100%;padding:9px;background:#fff;border:1px solid var(--line-2);color:var(--navy);border-radius:8px;font-weight:800;font-size:11px;letter-spacing:.04em;text-transform:uppercase;cursor:pointer;margin-top:8px;display:flex;align-items:center;justify-content:center;gap:5px;font-family:inherit';
+  btn.innerHTML = '🔒 Seal this letter';
+  btn.onclick = lockLetter;
+  btn.id = 'sealBtn';
+  const impact = document.querySelector('.btn-impact');
+  if (impact) impact.parentNode.insertBefore(btn, impact.nextSibling);
+})();
+
+// ─── TOTAL WORD COUNT IN SIDEBAR ────────────────
+const _origRenderChapterList = renderChapterList;
+renderChapterList = function() {
+  _origRenderChapterList();
+  const list = document.getElementById('chap-list');
+  if (!list) return;
+  const total = _totalWords();
+  if (total > 0) {
+    const mins = Math.round(total / 238); // avg reading speed 238 wpm
+    let bar = list.nextElementSibling;
+    if (!bar || !bar.classList.contains('total-words-bar')) {
+      bar = document.createElement('div');
+      bar.className = 'total-words-bar';
+      list.parentNode.insertBefore(bar, list.nextSibling);
+    }
+    bar.innerHTML = `<span class="tw-num">${total}</span> <span class="tw-read">words · ~${mins < 1 ? '<1' : mins} min read</span>`;
+  }
+};
+
 </script>
+
+<!-- LOCK BANNER -->
+<div class="lock-banner" id="lockBanner">
+  <span class="seal-icon">🔒</span>
+  <span class="lock-text">This letter was sealed on <span class="lock-date" id="lockDate"></span></span>
+  <button class="unlock-btn" onclick="unlockLetter()">Unlock to edit</button>
+</div>
+
+<!-- EMAIL MODAL -->
+<div class="modal-overlay" id="emailModal" onclick="if(event.target===this)closeEmailModal()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>📬 Email Preview</h3>
+      <button class="modal-close" onclick="closeEmailModal()">×</button>
+    </div>
+    <div class="modal-body" id="emailModalBody"></div>
+    <div class="modal-footer">
+      <button class="btn-modal-cancel" onclick="closeEmailModal()">Cancel</button>
+      <button class="btn-send-now" id="emailSendBtn" onclick="sendEmailNow()">Send email now →</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
