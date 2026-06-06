@@ -518,6 +518,10 @@ input,textarea,select{font-family:inherit;font-size:inherit;color:inherit;border
 .deliv-custom-input:focus{border-color:var(--navy);outline:none}
 .deliv-summary-row{font-size:11px;font-weight:700;color:var(--navy);background:rgba(10,42,74,.06);border-radius:7px;padding:7px 10px;display:flex;align-items:center;gap:5px}
 .deliv-summary-row .ds-icon{opacity:.7}
+.deliv-sub-label{font-size:11px;font-weight:800;color:var(--navy);display:block;margin-bottom:5px}
+.deliv-hint{font-size:11px;color:var(--ink-3);font-weight:600;margin:6px 0 0;line-height:1.45}
+.deliv-conds-textarea{width:100%;min-height:90px;padding:10px 12px;border-radius:8px;border:1px solid var(--line-2);font-size:13px;font-weight:600;color:var(--navy);background:#fff;box-sizing:border-box;resize:vertical;font-family:inherit;line-height:1.5}
+.deliv-conds-textarea:focus{border-color:var(--navy);outline:none}
 </style>
 </head>
 <body>
@@ -1265,7 +1269,7 @@ function renderMain(){
         <b>When should this be delivered?</b>
         <span>You can change this any time.</span>
       </div>
-      <div class="deliv-right">${_renderDeliveryUI(d)}</div>
+      <div class="deliv-right" id="delivRight">${_renderDeliveryUI(d)}</div>
     </div>
 
     <div class="nav">
@@ -1575,31 +1579,31 @@ function _deliverySummary(d) {
     anniversary: 'One year after your passing',
     '5_year_after': 'Five years after your passing',
     '10_year_after': 'Ten years after your passing',
-    never_unless: 'Only under specific conditions'
   };
   let label = '';
   if (d.delivery === 'specific_date') {
     label = d.deliveryDate
-      ? 'On ' + new Date(d.deliveryDate + 'T12:00:00').toLocaleDateString(undefined, {year:'numeric',month:'long',day:'numeric'})
-      : 'Specific date — not yet set';
+      ? '📅 ' + new Date(d.deliveryDate + 'T12:00:00').toLocaleDateString(undefined, {year:'numeric',month:'long',day:'numeric'})
+      : '📅 Date not yet chosen';
   } else if (d.delivery === 'life_event') {
     label = d.deliveryEvent
-      ? 'At: ' + _eventLabel(d.deliveryEvent, d.deliveryCustomEvent)
-      : 'Life event — not yet chosen';
+      ? '🎯 ' + _eventLabel(d.deliveryEvent, d.deliveryCustomEvent)
+      : '🎯 Event not yet chosen';
+  } else if (d.delivery === 'never_unless') {
+    label = d.deliveryConditions
+      ? '⚙️ ' + d.deliveryConditions.slice(0, 80) + (d.deliveryConditions.length > 80 ? '…' : '')
+      : '⚙️ Conditions not yet described';
   } else {
     label = map[d.delivery] || d.delivery;
   }
-  return `<span class="ds-icon">📋</span>${label}`;
+  return label;
 }
 
 function _renderDeliveryUI(d) {
   const today = new Date().toISOString().split('T')[0];
   const cur = d.delivery || 'on_passing';
-  const showDate = cur === 'specific_date';
-  const showEvent = cur === 'life_event';
-  const showCustom = d.deliveryEvent === 'custom_event';
 
-  // Main selector options
+  // Main selector
   const mainOpts = [
     ['After passing', [
       ['on_passing', 'On my passing'],
@@ -1608,9 +1612,7 @@ function _renderDeliveryUI(d) {
       ['5_year_after', 'Five years after'],
       ['10_year_after', 'Ten years after'],
     ]],
-    ['Life event', [
-      ['life_event', 'At a life event…'],
-    ]],
+    ['Life event', [['life_event', 'At a life event…']]],
     ['Custom', [
       ['specific_date', 'On a specific date'],
       ['never_unless', 'Only under specific conditions'],
@@ -1640,40 +1642,66 @@ function _renderDeliveryUI(d) {
     items.forEach(([v, l]) => { evtHtml += `<option value="${v}"${d.deliveryEvent===v?' selected':''}>${l}</option>`; });
     evtHtml += '</optgroup>';
   });
-  evtHtml += `<option value="custom_event"${d.deliveryEvent==='custom_event'?' selected':''}>✏ Other — describe below…</option>`;
+  evtHtml += `<option value="custom_event"${d.deliveryEvent==='custom_event'?' selected':''}>✏ Not listed — describe it below</option>`;
 
   const summary = _deliverySummary(d);
+  const showDate  = cur === 'specific_date';
+  const showEvent = cur === 'life_event';
+  const showConds = cur === 'never_unless';
+  const showCustomEvt = showEvent && d.deliveryEvent === 'custom_event';
+
   return `
     <select onchange="setDelivery(this.value)" id="delivSel" class="deliv-select">${mainHtml}</select>
-    <div id="delivDatePicker" class="deliv-sub-row" style="display:${showDate?'flex':'none'}">
+
+    ${showDate ? `
+    <div class="deliv-sub-row">
       <span class="deliv-sub-icon">📅</span>
       <div style="flex:1">
-        <label style="font-size:11px;font-weight:800;color:var(--navy);display:block;margin-bottom:5px">Deliver on this date</label>
-        <input type="date" id="delivDate" class="deliv-date-input" value="${d.deliveryDate||''}" onchange="setDeliveryDate(this.value)" min="${today}">
+        <label class="deliv-sub-label">Choose a delivery date</label>
+        <input type="date" id="delivDate" class="deliv-date-input"
+          value="${d.deliveryDate||''}" onchange="setDeliveryDate(this.value)" min="${today}">
+        <p class="deliv-hint">This message will be held until this date, then released to the recipient.</p>
       </div>
-    </div>
-    <div id="delivEventPicker" class="deliv-sub-row" style="display:${showEvent?'flex':'none'}">
+    </div>` : ''}
+
+    ${showEvent ? `
+    <div class="deliv-sub-row">
       <span class="deliv-sub-icon">🎯</span>
       <div style="flex:1">
-        <label style="font-size:11px;font-weight:800;color:var(--navy);display:block;margin-bottom:5px">Life event trigger</label>
+        <label class="deliv-sub-label">Select the life event</label>
         <select id="delivEvent" class="deliv-select" onchange="setDeliveryEvent(this.value)">${evtHtml}</select>
-        <input type="text" id="delivCustomEvent" class="deliv-custom-input" placeholder="Describe the event or condition…" value="${d.deliveryCustomEvent||''}" oninput="setDeliveryCustomEvent(this.value)" style="display:${showCustom?'block':'none'};margin-top:8px">
+        ${showCustomEvt ? `
+        <label class="deliv-sub-label" style="margin-top:10px">Describe the event</label>
+        <input type="text" id="delivCustomEvent" class="deliv-custom-input"
+          placeholder="e.g. When she moves across the country, when he gets his PhD…"
+          value="${d.deliveryCustomEvent||''}" oninput="setDeliveryCustomEvent(this.value)">` : ''}
+        <p class="deliv-hint">Your executor will release this message when this event occurs.</p>
       </div>
-    </div>
-    ${summary ? `<div class="deliv-summary-row">${summary}</div>` : ''}`;
+    </div>` : ''}
+
+    ${showConds ? `
+    <div class="deliv-sub-row">
+      <span class="deliv-sub-icon">⚙️</span>
+      <div style="flex:1">
+        <label class="deliv-sub-label">Describe the conditions</label>
+        <textarea id="delivConds" class="deliv-conds-textarea"
+          placeholder="e.g. Only release this if they have been sober for 12 months. / Only if they ask about me directly. / Release this if the family goes through a difficult time — leave it to my executor's judgment."
+          oninput="setDeliveryConditions(this.value)">${d.deliveryConditions||''}</textarea>
+        <p class="deliv-hint">Your executor will use this description to decide when to release the message.</p>
+      </div>
+    </div>` : ''}
+
+    ${summary ? `<div class="deliv-summary-row"><span class="ds-icon">📋</span> ${summary}</div>` : ''}`;
 }
 
-function setDelivery(val){
+function setDelivery(val) {
   const ch = CHAPTERS[currentChapter];
   if (!state.chapters[ch.id]) state.chapters[ch.id] = {text:'', seconds:0, mode:'voice', delivery:'on_passing'};
   state.chapters[ch.id].delivery = val;
   saveState();
-  const datePicker = document.getElementById('delivDatePicker');
-  const eventPicker = document.getElementById('delivEventPicker');
-  const summary = document.querySelector('.deliv-summary-row');
-  if (datePicker) datePicker.style.display = val === 'specific_date' ? 'flex' : 'none';
-  if (eventPicker) eventPicker.style.display = val === 'life_event' ? 'flex' : 'none';
-  if (summary) summary.innerHTML = _deliverySummary(state.chapters[ch.id]);
+  // Re-render entire delivery panel so the correct sub-inputs appear
+  const delivRight = document.getElementById('delivRight');
+  if (delivRight) delivRight.innerHTML = _renderDeliveryUI(state.chapters[ch.id]);
   showToast('Delivery updated');
 }
 
@@ -1682,9 +1710,9 @@ function setDeliveryDate(val) {
   if (!state.chapters[ch.id]) state.chapters[ch.id] = {delivery:'on_passing'};
   state.chapters[ch.id].deliveryDate = val;
   saveState();
-  const summary = document.querySelector('.deliv-summary-row');
-  if (summary) summary.innerHTML = _deliverySummary(state.chapters[ch.id]);
-  if (val) showToast('Date set: ' + new Date(val + 'T12:00:00').toLocaleDateString(undefined,{month:'long',day:'numeric',year:'numeric'}));
+  const s = document.querySelector('.deliv-summary-row');
+  if (s) s.innerHTML = '<span class="ds-icon">📋</span> ' + _deliverySummary(state.chapters[ch.id]);
+  if (val) showToast('Date set: ' + new Date(val+'T12:00:00').toLocaleDateString(undefined,{month:'long',day:'numeric',year:'numeric'}));
 }
 
 function setDeliveryEvent(val) {
@@ -1692,10 +1720,9 @@ function setDeliveryEvent(val) {
   if (!state.chapters[ch.id]) state.chapters[ch.id] = {delivery:'on_passing'};
   state.chapters[ch.id].deliveryEvent = val;
   saveState();
-  const customInput = document.getElementById('delivCustomEvent');
-  if (customInput) customInput.style.display = val === 'custom_event' ? 'block' : 'none';
-  const summary = document.querySelector('.deliv-summary-row');
-  if (summary) summary.innerHTML = _deliverySummary(state.chapters[ch.id]);
+  // Re-render so the custom text input appears/disappears cleanly
+  const delivRight = document.getElementById('delivRight');
+  if (delivRight) delivRight.innerHTML = _renderDeliveryUI(state.chapters[ch.id]);
   if (val && val !== 'custom_event') showToast('Event: ' + _eventLabel(val));
 }
 
@@ -1704,8 +1731,17 @@ function setDeliveryCustomEvent(val) {
   if (!state.chapters[ch.id]) state.chapters[ch.id] = {delivery:'on_passing'};
   state.chapters[ch.id].deliveryCustomEvent = val;
   saveState();
-  const summary = document.querySelector('.deliv-summary-row');
-  if (summary) summary.innerHTML = _deliverySummary(state.chapters[ch.id]);
+  const s = document.querySelector('.deliv-summary-row');
+  if (s) s.innerHTML = '<span class="ds-icon">📋</span> ' + _deliverySummary(state.chapters[ch.id]);
+}
+
+function setDeliveryConditions(val) {
+  const ch = CHAPTERS[currentChapter];
+  if (!state.chapters[ch.id]) state.chapters[ch.id] = {delivery:'on_passing'};
+  state.chapters[ch.id].deliveryConditions = val;
+  saveState();
+  const s = document.querySelector('.deliv-summary-row');
+  if (s) s.innerHTML = '<span class="ds-icon">📋</span> ' + _deliverySummary(state.chapters[ch.id]);
 }
 
 // recording mock — uses real time + simulated transcript
