@@ -522,6 +522,38 @@ input,textarea,select{font-family:inherit;font-size:inherit;color:inherit;border
 .deliv-hint{font-size:11px;color:var(--ink-3);font-weight:600;margin:6px 0 0;line-height:1.45}
 .deliv-conds-textarea{width:100%;min-height:90px;padding:10px 12px;border-radius:8px;border:1px solid var(--line-2);font-size:13px;font-weight:600;color:var(--navy);background:#fff;box-sizing:border-box;resize:vertical;font-family:inherit;line-height:1.5}
 .deliv-conds-textarea:focus{border-color:var(--navy);outline:none}
+
+/* ── EXECUTORS CARD ── */
+.exec-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;margin-top:12px}
+.exec-card .exec-title{display:block;font-family:'Nunito';font-weight:900;font-size:13px;color:var(--navy);margin-bottom:5px}
+.exec-card .exec-sub{font-size:11px;color:var(--ink-3);line-height:1.45;margin-bottom:11px;font-weight:600}
+.exec-mini-list{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
+.exec-mini-row{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:var(--navy)}
+.exec-mini-row .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.exec-mini-row .dot.active{background:#22C55E}
+.exec-mini-row .dot.invited{background:#F5B800}
+.exec-mini-row .role{margin-left:auto;font-size:10px;font-weight:800;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em}
+.exec-manage-btn{width:100%;padding:9px;background:var(--navy);color:var(--yellow);border-radius:8px;font-weight:800;font-size:11px;letter-spacing:.04em;text-transform:uppercase;border:none;cursor:pointer}
+.exec-manage-btn:hover{background:var(--navy-d)}
+.exec-empty{font-size:11px;color:var(--ink-3);font-weight:600;font-style:italic}
+
+/* ── EXEC MODAL ── */
+.exec-form{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.exec-form .full{grid-column:1/-1}
+.exec-form label{font-size:11px;font-weight:800;color:var(--navy);display:block;margin-bottom:4px}
+.exec-form input,.exec-form select{width:100%;padding:9px 11px;border-radius:8px;border:1px solid var(--line-2);font-size:13px;font-weight:600;color:var(--navy);box-sizing:border-box;font-family:inherit}
+.exec-form input:focus,.exec-form select:focus{border-color:var(--navy);outline:none}
+.exec-list-row{display:flex;align-items:center;gap:12px;padding:13px;background:var(--bg);border-radius:10px;border:1px solid var(--line);margin-bottom:8px}
+.exec-list-row .ava{width:34px;height:34px;border-radius:50%;background:var(--navy);color:var(--yellow);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;flex-shrink:0}
+.exec-list-row .info{flex:1;min-width:0}
+.exec-list-row .info b{display:block;font-size:13px;color:var(--navy)}
+.exec-list-row .info span{font-size:11px;color:var(--ink-3);font-weight:600}
+.exec-status{font-size:10px;font-weight:800;padding:3px 9px;border-radius:999px;letter-spacing:.03em;text-transform:uppercase}
+.exec-status.active{background:#ECFDF5;color:#16a34a}
+.exec-status.invited{background:#FFFBEB;color:#d97706}
+.exec-row-btn{background:none;border:none;cursor:pointer;color:var(--ink-3);font-size:12px;font-weight:700;padding:4px 6px}
+.exec-row-btn:hover{color:var(--navy)}
+.exec-row-btn.del:hover{color:#dc2626}
 </style>
 </head>
 <body>
@@ -654,6 +686,14 @@ input,textarea,select{font-family:inherit;font-size:inherit;color:inherit;border
         <button class="btn-email-preview" onclick="openEmailPreview()">👁 Preview email</button>
         <button class="btn-email-lock" onclick="openSendEmailModal()">✉ Send to a recipient</button>
       </div>
+    </div>
+
+    <!-- EXECUTORS / TRUSTED CONTACTS -->
+    <div class="exec-card" id="execCard" style="display:none">
+      <span class="exec-title">🛡 Executors &amp; Trusted Contacts</span>
+      <p class="exec-sub">Name the people who can confirm your passing and release your messages when the time comes.</p>
+      <div id="execMiniList" class="exec-mini-list"></div>
+      <button class="exec-manage-btn" onclick="openExecModal()">Manage trusted contacts</button>
     </div>
   </aside>
 </div>
@@ -1400,6 +1440,11 @@ function editRecipient(rid){
     + '<select class="sec-select" onchange="updateRecipRelationship(\'' + rid + '\', this.value)">' + relOpts + '</select>'
     + '</div>'
     + '<div class="sec-field">'
+    + '<label class="sec-label">Their email<span class="opt-tag">For delivery</span></label>'
+    + '<div style="font-size:11px;color:var(--ink-3);font-weight:600;margin-bottom:6px;margin-top:-2px">Where this message will be delivered when the time comes. They sign in with this email to read it.</div>'
+    + '<input type="email" class="sec-input" placeholder="name@example.com" value="' + escapeHtml(r.email||'') + '" oninput="updateRecipEmail(\'' + rid + '\', this.value)">'
+    + '</div>'
+    + '<div class="sec-field">'
     + '<label class="sec-label">Your message to them<span class="req-tag">Required</span></label>'
     + '<div style="font-size:11px;color:var(--ink-3);font-weight:600;margin-bottom:6px;margin-top:-2px">This is their letter. Say what you would want to say one more time. Pick a starting prompt below or write freely.</div>'
     + '<textarea id="recipText" class="text-area" rows="6" placeholder="Start your message to ' + escapeHtml(r.name) + '..." oninput="updateRecipText(\'' + rid + '\', this.value)">' + escapeHtml(rd.text||'') + '</textarea>'
@@ -1430,6 +1475,11 @@ function updateRecipName(rid, val){
   const r = state.recipients.find(x=>x.id===rid);
   if (r) { r.name = val; r.initial = (val.charAt(0)||'?').toUpperCase(); }
   saveState(); renderChapterList();
+}
+function updateRecipEmail(rid, val){
+  const r = state.recipients.find(x=>x.id===rid);
+  if (r) r.email = val.trim();
+  saveState();
 }
 function updateRecipRelationship(rid, val){
   const r = state.recipients.find(x=>x.id===rid);
@@ -3834,8 +3884,10 @@ async function _initCloudFeatures() {
   // Show server-side panels
   const dmsEl = document.getElementById('dmsWidget');
   const sendEl = document.getElementById('sendEmailCard');
+  const execEl = document.getElementById('execCard');
   if (dmsEl) dmsEl.style.display = 'block';
   if (sendEl) sendEl.style.display = 'block';
+  if (execEl) { execEl.style.display = 'block'; loadExecContacts(); }
 
   // Load cloud state (if newer than local)
   try {
@@ -3883,8 +3935,10 @@ async function _initCloudFeatures() {
 function _cloudFeaturesHidden() {
   const dmsEl = document.getElementById('dmsWidget');
   const sendEl = document.getElementById('sendEmailCard');
+  const execEl = document.getElementById('execCard');
   if (dmsEl) dmsEl.style.display = 'none';
   if (sendEl) sendEl.style.display = 'none';
+  if (execEl) execEl.style.display = 'none';
 }
 
 function _scheduleCloudSave() {
@@ -4166,6 +4220,108 @@ function _totalWords() {
   return total;
 }
 
+// ─── EXECUTORS / TRUSTED CONTACTS ────────────────
+function openExecModal() {
+  const m = document.getElementById('execModal');
+  if (m) m.classList.add('on');
+  loadExecContacts();
+}
+function closeExecModal() {
+  const m = document.getElementById('execModal');
+  if (m) m.classList.remove('on');
+}
+
+async function loadExecContacts() {
+  const list = document.getElementById('execList');
+  const mini = document.getElementById('execMiniList');
+  try {
+    const token = await _getToken();
+    const r = await fetch('/api/contacts', { headers: token ? { 'Authorization': 'Bearer ' + token } : {} });
+    const { contacts } = await r.json();
+    _renderExecList(contacts || []);
+    _renderExecMini(contacts || []);
+  } catch (e) {
+    if (list) list.innerHTML = '<div class="exec-empty">Could not load contacts.</div>';
+  }
+}
+
+function _renderExecList(contacts) {
+  const list = document.getElementById('execList');
+  if (!list) return;
+  if (!contacts.length) { list.innerHTML = '<div class="exec-empty">No trusted contacts yet. Add someone above.</div>'; return; }
+  list.innerHTML = contacts.map(c => `
+    <div class="exec-list-row">
+      <div class="ava">${escapeHTML((c.name || '?').charAt(0).toUpperCase())}</div>
+      <div class="info">
+        <b>${escapeHTML(c.name)}</b>
+        <span>${escapeHTML(c.email)}${c.relationship ? ' · ' + escapeHTML(c.relationship) : ''} · ${c.role === 'executor' ? 'Executor' : 'Verifier'}</span>
+      </div>
+      <span class="exec-status ${c.status === 'active' ? 'active' : 'invited'}">${c.status === 'active' ? 'Accepted' : 'Invited'}</span>
+      ${c.status !== 'active' ? `<button class="exec-row-btn" title="Resend invite" onclick="resendExec('${c.id}')">Resend</button>` : ''}
+      <button class="exec-row-btn del" title="Remove" onclick="removeExec('${c.id}','${escapeAttr(c.name)}')">Remove</button>
+    </div>`).join('');
+}
+
+function _renderExecMini(contacts) {
+  const mini = document.getElementById('execMiniList');
+  if (!mini) return;
+  if (!contacts.length) { mini.innerHTML = '<div class="exec-empty">None yet — add your first.</div>'; return; }
+  mini.innerHTML = contacts.slice(0, 4).map(c => `
+    <div class="exec-mini-row">
+      <span class="dot ${c.status === 'active' ? 'active' : 'invited'}"></span>
+      ${escapeHTML(c.name)}
+      <span class="role">${c.role === 'executor' ? 'Exec' : 'Verify'}</span>
+    </div>`).join('');
+}
+
+async function addExec() {
+  const name = document.getElementById('ecName').value.trim();
+  const email = document.getElementById('ecEmail').value.trim();
+  const phone = document.getElementById('ecPhone').value.trim();
+  const relationship = document.getElementById('ecRel').value.trim();
+  const role = document.getElementById('ecRole').value;
+  if (!name || !email || !email.includes('@')) { showToast('Enter a name and valid email'); return; }
+  const btn = document.getElementById('ecAddBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Inviting…'; }
+  try {
+    const token = await _getToken();
+    const r = await fetch('/api/contacts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': 'Bearer ' + token } : {}) },
+      body: JSON.stringify({ name, email, phone, relationship, role })
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'Failed');
+    ['ecName', 'ecEmail', 'ecPhone', 'ecRel'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    showToast('✓ Invitation sent to ' + email);
+    loadExecContacts();
+  } catch (e) {
+    showToast(e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '＋ Invite this person'; }
+  }
+}
+
+async function resendExec(id) {
+  try {
+    const token = await _getToken();
+    const r = await fetch('/api/contacts/' + id + '/resend', { method: 'POST', headers: token ? { 'Authorization': 'Bearer ' + token } : {} });
+    if (!r.ok) throw new Error('Failed');
+    showToast('Invitation resent');
+  } catch (e) { showToast('Could not resend'); }
+}
+
+async function removeExec(id, name) {
+  if (!confirm('Remove ' + name + ' as a trusted contact?')) return;
+  try {
+    const token = await _getToken();
+    const r = await fetch('/api/contacts/' + id, { method: 'DELETE', headers: token ? { 'Authorization': 'Bearer ' + token } : {} });
+    if (!r.ok) throw new Error('Failed');
+    showToast('Removed');
+    loadExecContacts();
+  } catch (e) { showToast('Could not remove'); }
+}
+
 function escapeHTML(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -4221,6 +4377,40 @@ renderChapterList = function() {
     <div class="modal-footer">
       <button class="btn-modal-cancel" onclick="closeEmailModal()">Cancel</button>
       <button class="btn-send-now" id="emailSendBtn" onclick="sendEmailNow()">Send email now →</button>
+    </div>
+  </div>
+</div>
+
+<!-- EXECUTORS MODAL -->
+<div class="modal-overlay" id="execModal" onclick="if(event.target===this)closeExecModal()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>🛡 Executors &amp; Trusted Contacts</h3>
+      <button class="modal-close" onclick="closeExecModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--ink-2);line-height:1.55;margin:0 0 18px">
+        These are the people who can <b>confirm your passing</b> and help release your messages.
+        An <b>Executor</b> can report your passing and release messages; a <b>Verifier</b> only helps confirm.
+        We require more than one confirmation, and you'll always get a chance to cancel if it's a mistake.
+      </p>
+      <div class="exec-form">
+        <div><label>Name</label><input type="text" id="ecName" placeholder="Full name"></div>
+        <div><label>Email</label><input type="email" id="ecEmail" placeholder="name@example.com"></div>
+        <div><label>Phone (optional)</label><input type="tel" id="ecPhone" placeholder="For SMS verification"></div>
+        <div><label>Relationship</label><input type="text" id="ecRel" placeholder="e.g. Spouse, Attorney"></div>
+        <div class="full"><label>Role</label>
+          <select id="ecRole">
+            <option value="executor">Executor — can report passing &amp; release messages</option>
+            <option value="verifier">Verifier — only helps confirm a passing</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer" style="padding:0 0 16px;border:none;justify-content:flex-start">
+        <button class="btn-send-now" onclick="addExec()" id="ecAddBtn">＋ Invite this person</button>
+      </div>
+      <div style="font-size:11px;font-weight:800;color:var(--ink-3);letter-spacing:.06em;text-transform:uppercase;margin:6px 0 10px">Your trusted contacts</div>
+      <div id="execList"><div class="exec-empty">No trusted contacts yet.</div></div>
     </div>
   </div>
 </div>

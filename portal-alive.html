@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>I'm still here · Legacy Message</title>
+<style>
+  :root{--navy:#0A2A4A;--yellow:#F5B800;--bg:#F2F5F9;--ink:#1A2F42;--ink-2:#5A6E80;--green:#16a34a;--red:#dc2626}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,sans-serif;background:var(--bg);color:var(--ink);padding:24px}
+  .card{background:#fff;border-radius:20px;max-width:480px;width:100%;box-shadow:0 8px 50px rgba(10,42,74,.15);overflow:hidden}
+  .head{background:linear-gradient(135deg,var(--navy),#071E38);padding:32px;text-align:center}
+  .head .tag{display:inline-block;background:rgba(245,180,0,.15);border:1px solid rgba(245,180,0,.4);border-radius:20px;padding:4px 14px;color:var(--yellow);font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}
+  .body{padding:34px 36px 38px;text-align:center}
+  h1{font-size:24px;color:var(--navy);margin:0 0 12px}
+  p{color:var(--ink-2);font-size:15px;line-height:1.6;margin:0 0 24px}
+  .btn{padding:15px 30px;border-radius:12px;font-weight:900;font-size:16px;border:none;cursor:pointer;font-family:inherit;background:var(--green);color:#fff;width:100%}
+  .btn:disabled{opacity:.6;cursor:not-allowed}
+  .result{font-size:16px;font-weight:700;line-height:1.6}
+  .result.ok{color:var(--green)}
+  .result.err{color:var(--red)}
+  .spin{display:inline-block;width:18px;height:18px;border:2px solid rgba(255,255,255,.5);border-top-color:#fff;border-radius:50%;animation:s .7s linear infinite;vertical-align:middle}
+  @keyframes s{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="head"><span class="tag">Legacy Message</span></div>
+  <div class="body" id="body">
+    <h1>Are you still with us?</h1>
+    <p>Someone reported that you had passed away, which would begin delivering your Legacy Messages. If you're reading this, that was a mistake. Tap below to stop it — nothing has been sent.</p>
+    <button class="btn" id="btn" onclick="confirmAlive()">Yes — I'm still here. Cancel it.</button>
+  </div>
+</div>
+<script>
+function getToken(){ return new URLSearchParams(location.search).get('token'); }
+async function confirmAlive(){
+  const btn = document.getElementById('btn');
+  const token = getToken();
+  if(!token){ show('err', 'This link is invalid.'); return; }
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Cancelling…';
+  try{
+    const r = await fetch('/api/proof-of-life', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({token})});
+    const j = await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(j.error||'Something went wrong.');
+    show('ok', '✓ Done. Delivery has been stopped and your account is active again. We\'re glad you\'re here.');
+  }catch(e){
+    show('err', e.message);
+    btn.disabled = false; btn.textContent = 'Try again';
+  }
+}
+function show(kind, msg){
+  document.getElementById('body').innerHTML = '<h1>'+(kind==='ok'?'You\'re all set':'Hmm')+'</h1><p class="result '+kind+'">'+msg+'</p>';
+}
+</script>
+</body>
+</html>

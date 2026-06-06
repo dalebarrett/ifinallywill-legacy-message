@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Executor Portal · Legacy Message</title>
+<style>
+  :root{--navy:#0A2A4A;--navy-d:#071E38;--yellow:#F5B800;--bg:#F2F5F9;--line:#E2EBF0;--line-2:#CDD9E5;--ink:#1A2F42;--ink-2:#5A6E80;--ink-3:#8098A8;--green:#16a34a;--red:#dc2626;--amber:#d97706}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,sans-serif;background:var(--bg);color:var(--ink)}
+  .top{background:#fff;border-bottom:1px solid var(--line);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .brand{font-weight:900;color:var(--navy);font-size:16px;display:flex;align-items:center;gap:8px}
+  .brand .tag{font-size:9px;font-weight:800;color:var(--yellow);background:var(--navy);padding:3px 8px;border-radius:5px;letter-spacing:.06em;text-transform:uppercase}
+  #authArea{display:flex;gap:8px;align-items:center}
+  .btn{padding:9px 16px;border-radius:9px;font-weight:800;font-size:13px;border:none;cursor:pointer;font-family:inherit}
+  .btn-primary{background:var(--navy);color:var(--yellow)}
+  .btn-ghost{background:#fff;border:1px solid var(--line-2);color:var(--navy)}
+  .btn-danger{background:var(--red);color:#fff}
+  .btn-green{background:var(--green);color:#fff}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 20px 80px}
+  h1{font-size:24px;color:var(--navy);margin:0 0 6px}
+  .sub{color:var(--ink-2);font-size:14px;line-height:1.5;margin:0 0 24px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:14px}
+  .card h3{margin:0 0 4px;font-size:16px;color:var(--navy)}
+  .pill{display:inline-block;font-size:11px;font-weight:800;padding:3px 10px;border-radius:999px;letter-spacing:.03em}
+  .pill.active{background:#ECFDF5;color:var(--green)}
+  .pill.pending{background:#FFFBEB;color:var(--amber)}
+  .pill.verified{background:#FEF2F2;color:var(--red)}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .muted{color:var(--ink-3);font-size:12px;font-weight:600}
+  .gate{text-align:center;padding:60px 20px}
+  .gate p{color:var(--ink-2);margin:0 0 20px}
+  .msg-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 0;border-bottom:1px solid var(--line)}
+  .msg-row:last-child{border-bottom:none}
+  .msg-row b{font-size:13px;color:var(--navy)}
+  .msg-row .meta{font-size:11px;color:var(--ink-3);font-weight:600}
+  .banner{border-radius:12px;padding:14px 16px;margin:0 0 16px;font-size:13px;line-height:1.5;font-weight:600}
+  .banner.warn{background:#FFFBEB;border:1px solid #FDE68A;color:#92400E}
+  .banner.info{background:#EFF6FF;border:1px solid #BFDBFE;color:#1E40AF}
+  .banner.ok{background:#ECFDF5;border:1px solid #A7F3D0;color:#065F46}
+  .empty{text-align:center;color:var(--ink-3);padding:40px 0;font-size:14px}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(100px);background:var(--navy);color:#fff;padding:12px 22px;border-radius:10px;font-weight:700;font-size:13px;transition:transform .3s;z-index:100}
+  .toast.on{transform:translateX(-50%) translateY(0)}
+  .hide{display:none!important}
+  .spin{display:inline-block;width:16px;height:16px;border:2px solid var(--line-2);border-top-color:var(--navy);border-radius:50%;animation:s .7s linear infinite}
+  @keyframes s{to{transform:rotate(360deg)}}
+  label{font-size:12px;font-weight:800;color:var(--navy);display:block;margin-bottom:5px}
+  input[type=date]{padding:9px 12px;border-radius:8px;border:1px solid var(--line-2);font-size:13px;font-family:inherit}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="brand"><span class="tag">Executor</span> Legacy Message</div>
+  <div id="authArea"></div>
+</div>
+<div class="wrap">
+  <div id="gate" class="gate hide">
+    <h1>Executor &amp; Trusted Contact Portal</h1>
+    <p>Please sign in to manage the people who have entrusted you with their final messages.</p>
+    <button class="btn btn-primary" onclick="window.Clerk.openSignIn({})">Sign in</button>
+  </div>
+  <div id="content" class="hide">
+    <h1>People who trust you</h1>
+    <p class="sub">When someone passes, this is where you confirm it and help release the messages they left — only when it is truly time.</p>
+    <div id="inviteBanner"></div>
+    <div id="list"><div class="empty"><span class="spin"></span></div></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+let TOKENS = null;
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('on');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('on'),2800);}
+async function getToken(){try{return await window.Clerk?.session?.getToken()||null;}catch{return null;}}
+async function api(path, opts={}){
+  const token = await getToken();
+  const r = await fetch(path, {...opts, headers:{'Content-Type':'application/json', ...(token?{'Authorization':'Bearer '+token}:{}), ...(opts.headers||{})}});
+  const j = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(j.error||('Error '+r.status));
+  return j;
+}
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+async function acceptInviteIfPresent(){
+  const params = new URLSearchParams(location.search);
+  const invite = params.get('invite');
+  if(!invite) return;
+  try{
+    const res = await api('/api/invite/accept', {method:'POST', body:JSON.stringify({token:invite})});
+    document.getElementById('inviteBanner').innerHTML =
+      `<div class="banner ok">✓ You are now ${res.role==='executor'?'the executor':'a trusted contact'} for <b>${esc(res.ownerName)}</b>. Thank you for accepting this responsibility.</div>`;
+    history.replaceState({}, '', '/executor');
+  }catch(e){
+    document.getElementById('inviteBanner').innerHTML = `<div class="banner warn">${esc(e.message)}</div>`;
+  }
+}
+
+async function loadAssignments(){
+  const list = document.getElementById('list');
+  try{
+    const {assignments} = await api('/api/executor/assignments');
+    if(!assignments.length){
+      list.innerHTML = '<div class="empty">No one has named you yet. When someone adds you as their executor or trusted contact, they\'ll appear here.</div>';
+      return;
+    }
+    list.innerHTML = '';
+    for(const a of assignments){
+      const detail = await api('/api/executor/owner/'+encodeURIComponent(a.ownerId)).catch(()=>null);
+      list.appendChild(renderOwnerCard(a, detail));
+    }
+  }catch(e){
+    list.innerHTML = `<div class="banner warn">${esc(e.message)}</div>`;
+  }
+}
+
+function renderOwnerCard(a, d){
+  const card = document.createElement('div');
+  card.className = 'card';
+  const status = (d && d.verification && d.verification.status) || a.status || 'active';
+  const pill = status==='verified_deceased'?'<span class="pill verified">Verified — delivering</span>'
+            : status==='pending'?'<span class="pill pending">Passing reported — confirming</span>'
+            : '<span class="pill active">Active</span>';
+  let body = `<div class="row"><div><h3>${esc(a.ownerName)}</h3><div class="muted">Your role: ${esc(a.role==='executor'?'Executor':'Trusted contact')}</div></div>${pill}</div>`;
+
+  if(!d){ card.innerHTML = body; return card; }
+  const v = d.verification;
+
+  if(status==='active'){
+    if(a.role==='executor'){
+      body += `<div class="banner info" style="margin-top:14px">If ${esc(a.ownerName)} has passed away, you can report it here. Their other trusted contacts will be asked to confirm, and ${esc(a.ownerName)} will be given a window to respond in case of a mistake.</div>
+        <div style="margin-bottom:12px"><label>Date of passing (optional)</label><input type="date" id="dd-${a.ownerId}"></div>
+        <button class="btn btn-danger" onclick="reportDeath('${a.ownerId}')">Report a passing</button>`;
+    } else {
+      body += `<div class="banner info" style="margin-top:14px">Nothing to do right now. If a passing is reported, you'll be asked to confirm it.</div>`;
+    }
+  } else if(status==='pending'){
+    const confirms = v?v.confirms:0, threshold = v?v.threshold:2, disputes=v?v.disputes:0;
+    body += `<div class="banner warn" style="margin-top:14px"><b>${esc(v&&v.reportedByName||'Someone')}</b> reported this passing. <b>${confirms} of ${threshold}</b> confirmations received${disputes?`, ${disputes} dispute(s)`:''}. Delivery begins only after the confirmation threshold is met and the grace window closes${v&&v.graceUntil?` (around ${new Date(v.graceUntil).toLocaleDateString()})`:''}.</div>
+      <div class="row"><button class="btn btn-green" onclick="vote('${a.ownerId}','confirm')">Confirm the passing</button>
+      <button class="btn btn-ghost" onclick="vote('${a.ownerId}','dispute')">This is a mistake — dispute</button></div>`;
+  } else if(status==='verified_deceased'){
+    const human = (d.messages||[]).filter(m=>m.needsHuman && !m.sent);
+    const auto = (d.messages||[]).filter(m=>!m.needsHuman);
+    body += `<div class="banner ok" style="margin-top:14px">Verified. Time-based and date-based messages are being delivered automatically on the schedule ${esc(a.ownerName)} chose.</div>`;
+    if(human.length){
+      body += `<div style="margin-top:8px"><div class="muted" style="margin-bottom:6px">These messages wait for a life event or a condition you must decide on:</div>`;
+      human.forEach(m=>{
+        body += `<div class="msg-row"><div><b>${esc(m.title)}</b><div class="meta">${esc(labelFor(m.rule))}${m.released?' · released':''}</div></div>
+          ${m.released?'<span class="pill active">Released</span>':`<button class="btn btn-primary" onclick="release('${a.ownerId}','${m.key}')">Release now</button>`}</div>`;
+      });
+      body += `</div>`;
+    }
+    if(auto.length){
+      body += `<div class="muted" style="margin-top:10px">${auto.filter(m=>m.sent).length} of ${auto.length} scheduled messages delivered.</div>`;
+    }
+  }
+  card.innerHTML = body;
+  return card;
+}
+function labelFor(rule){
+  return ({on_passing:'On passing',executor_unlock:'On executor unlock','1_year_after':'One year after','5_year_after':'Five years after','10_year_after':'Ten years after',specific_date:'On a specific date',life_event:'At a life event',never_unless:'Under specific conditions'})[rule]||rule;
+}
+
+async function reportDeath(ownerId){
+  const dd = document.getElementById('dd-'+ownerId);
+  if(!confirm('Report this passing?\n\nThe other trusted contacts will be asked to confirm, and a grace window will open before anything is delivered.')) return;
+  try{
+    await api('/api/executor/report-death', {method:'POST', body:JSON.stringify({ownerId, deathDate: dd&&dd.value||null})});
+    toast('Reported. Confirmations requested.');
+    loadAssignments();
+  }catch(e){ toast(e.message); }
+}
+async function vote(ownerId, v){
+  try{
+    const r = await api('/api/executor/confirm', {method:'POST', body:JSON.stringify({ownerId, vote:v})});
+    toast(v==='confirm'?`Confirmed (${r.confirms}/${r.threshold})`:'Dispute recorded');
+    loadAssignments();
+  }catch(e){ toast(e.message); }
+}
+async function release(ownerId, messageKey){
+  if(!confirm('Release this message now? It will be delivered to its recipient immediately.')) return;
+  try{
+    await api('/api/executor/release', {method:'POST', body:JSON.stringify({ownerId, messageKey})});
+    toast('Message released and delivered');
+    loadAssignments();
+  }catch(e){ toast(e.message); }
+}
+
+function renderAuthArea(){
+  const el = document.getElementById('authArea');
+  el.innerHTML='';
+  if(window.Clerk.user){
+    const div=document.createElement('div'); el.appendChild(div);
+    window.Clerk.mountUserButton(div);
+  } else {
+    const b=document.createElement('button'); b.className='btn btn-primary'; b.textContent='Sign in';
+    b.onclick=()=>window.Clerk.openSignIn({}); el.appendChild(b);
+  }
+}
+function showSignedIn(yes){
+  document.getElementById('gate').classList.toggle('hide', yes);
+  document.getElementById('content').classList.toggle('hide', !yes);
+}
+
+(async () => {
+  if(!window.Clerk){
+    if(document.readyState!=='complete') await new Promise(r=>window.addEventListener('load',r,{once:true}));
+  }
+  if(!window.Clerk){ document.getElementById('gate').classList.remove('hide'); return; }
+  await window.Clerk.load();
+  const boot = async () => {
+    renderAuthArea();
+    if(window.Clerk.user){ showSignedIn(true); await acceptInviteIfPresent(); await loadAssignments(); }
+    else { showSignedIn(false); }
+  };
+  window.Clerk.addListener(boot);
+  boot();
+})();
+</script>
+</body>
+</html>

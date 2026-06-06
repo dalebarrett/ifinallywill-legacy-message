@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Your Messages · Legacy Message</title>
+<style>
+  :root{--navy:#0A2A4A;--navy-d:#071E38;--yellow:#F5B800;--bg:#F2F5F9;--line:#E2EBF0;--line-2:#CDD9E5;--ink:#1A2F42;--ink-2:#5A6E80;--ink-3:#8098A8}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,sans-serif;background:var(--bg);color:var(--ink)}
+  .top{background:#fff;border-bottom:1px solid var(--line);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .brand{font-weight:900;color:var(--navy);font-size:16px;display:flex;align-items:center;gap:8px}
+  .brand .tag{font-size:9px;font-weight:800;color:var(--yellow);background:var(--navy);padding:3px 8px;border-radius:5px;letter-spacing:.06em;text-transform:uppercase}
+  .btn{padding:9px 16px;border-radius:9px;font-weight:800;font-size:13px;border:none;cursor:pointer;font-family:inherit}
+  .btn-primary{background:var(--navy);color:var(--yellow)}
+  .wrap{max-width:680px;margin:0 auto;padding:36px 20px 80px}
+  h1{font-size:26px;color:var(--navy);margin:0 0 8px}
+  .sub{color:var(--ink-2);font-size:15px;line-height:1.55;margin:0 0 28px}
+  .gate{text-align:center;padding:60px 20px}
+  .gate p{color:var(--ink-2);margin:0 0 20px}
+  .letter{background:#fff;border:1px solid var(--line);border-radius:16px;padding:30px 32px;margin-bottom:18px;box-shadow:0 2px 20px rgba(10,42,74,.05)}
+  .letter .from{font-size:11px;font-weight:800;color:var(--ink-3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
+  .letter h3{margin:0 0 16px;font-size:20px;color:var(--navy)}
+  .letter .body{font-size:16px;line-height:1.85;color:var(--ink);white-space:pre-wrap}
+  .letter .when{margin-top:18px;padding-top:14px;border-top:1px solid var(--line);font-size:12px;color:var(--ink-3);font-weight:600}
+  .empty{text-align:center;color:var(--ink-3);padding:56px 20px;font-size:15px;line-height:1.6}
+  .hide{display:none!important}
+  .spin{display:inline-block;width:18px;height:18px;border:2px solid var(--line-2);border-top-color:var(--navy);border-radius:50%;animation:s .7s linear infinite}
+  @keyframes s{to{transform:rotate(360deg)}}
+  #authArea{display:flex;gap:8px;align-items:center}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="brand"><span class="tag">Keepsakes</span> Legacy Message</div>
+  <div id="authArea"></div>
+</div>
+<div class="wrap">
+  <div id="gate" class="gate hide">
+    <h1>Your private messages</h1>
+    <p>If someone has left you a message, sign in with the email address it was sent to and you'll find it here, kept safely for you.</p>
+    <button class="btn btn-primary" onclick="window.Clerk.openSignIn({})">Sign in to view</button>
+  </div>
+  <div id="content" class="hide">
+    <h1>Messages left for you</h1>
+    <p class="sub">These were written for you, to reach you at this moment. Take your time.</p>
+    <div id="list"><div style="text-align:center;padding:40px"><span class="spin"></span></div></div>
+  </div>
+</div>
+
+<script>
+async function getToken(){try{return await window.Clerk?.session?.getToken()||null;}catch{return null;}}
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+async function loadInbox(){
+  const list = document.getElementById('list');
+  try{
+    const token = await getToken();
+    const r = await fetch('/api/portal/inbox',{headers: token?{'Authorization':'Bearer '+token}:{}});
+    const {messages} = await r.json();
+    if(!messages || !messages.length){
+      list.innerHTML = '<div class="empty">No messages have been delivered to you yet.<br>When one is released, it will appear here — and we\'ll email you to let you know.</div>';
+      return;
+    }
+    list.innerHTML = messages.map(m=>`
+      <div class="letter">
+        <div class="from">From ${esc(m.from)}</div>
+        <h3>${esc(m.title)}</h3>
+        <div class="body">${esc(m.text)}</div>
+        <div class="when">Delivered ${new Date(m.deliveredAt).toLocaleDateString(undefined,{year:'numeric',month:'long',day:'numeric'})}</div>
+      </div>`).join('');
+  }catch(e){
+    list.innerHTML = '<div class="empty">Could not load your messages right now. Please try again.</div>';
+  }
+}
+function renderAuthArea(){
+  const el = document.getElementById('authArea'); el.innerHTML='';
+  if(window.Clerk.user){ const d=document.createElement('div'); el.appendChild(d); window.Clerk.mountUserButton(d); }
+  else { const b=document.createElement('button'); b.className='btn btn-primary'; b.textContent='Sign in'; b.onclick=()=>window.Clerk.openSignIn({}); el.appendChild(b); }
+}
+function showSignedIn(yes){
+  document.getElementById('gate').classList.toggle('hide', yes);
+  document.getElementById('content').classList.toggle('hide', !yes);
+}
+(async () => {
+  if(!window.Clerk){ if(document.readyState!=='complete') await new Promise(r=>window.addEventListener('load',r,{once:true})); }
+  if(!window.Clerk){ document.getElementById('gate').classList.remove('hide'); return; }
+  await window.Clerk.load();
+  const boot = () => { renderAuthArea(); if(window.Clerk.user){ showSignedIn(true); loadInbox(); } else { showSignedIn(false); } };
+  window.Clerk.addListener(boot); boot();
+})();
+</script>
+</body>
+</html>

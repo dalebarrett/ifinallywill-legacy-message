@@ -6,6 +6,8 @@ const fs = require('fs');
 const Anthropic = require('@anthropic-ai/sdk');
 const OpenAI = require('openai');
 const { clerkMiddleware, getAuth, clerkClient } = require('@clerk/express');
+const crypto = require('crypto');
+const engine = require('./legacy-engine');
 
 // ─── STARTUP GUARDS ──────────────────────────────────
 if (!process.env.CLERK_SECRET_KEY) {
@@ -338,6 +340,408 @@ function buildLegacyLetterEmail({ senderName, recipientName, chapters }) {
   </div>
 </body></html>`;
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// TRUSTED CONTACTS · DEATH VERIFICATION · DELIVERY
+// ════════════════════════════════════════════════════════════════════════
+
+function newId(prefix) {
+  return prefix + '_' + crypto.randomBytes(8).toString('hex');
+}
+
+// ─── Owner: manage trusted contacts / executors ──────────────────────────
+app.get('/api/contacts', requireAuth, async (req, res) => {
+  const { userId } = getAuth(req);
+  try {
+    const { meta } = await engine.getMeta(userId);
+    res.json({ contacts: meta.trustedContacts || [] });
+  } catch (err) {
+    console.error('contacts list:', err.message);
+    res.status(500).json({ error: 'Could not load contacts' });
+  }
+});
+
+app.post('/api/contacts', requireAuth, async (req, res) => {
+  const { userId } = getAuth(req);
+  const { name, email, phone, relationship, role } = req.body || {};
+  if (!name || !email || !email.includes('@')) {
+    return res.status(400).json({ error: 'Name and a valid email are required' });
+  }
+  const cleanRole = role === 'executor' ? 'executor' : 'verifier';
+  try {
+    const { user, meta } = await engine.getMeta(userId);
+    const contacts = meta.trustedContacts || [];
+    if (contacts.some((c) => c.email.toLowerCase() === email.toLowerCase())) {
+      return res.status(409).json({ error: 'That email is already a trusted contact' });
+    }
+    const contact = {
+      id: newId('tc'),
+      name, email, phone: phone || '', relationship: relationship || '',
+      role: cleanRole, status: 'invited',
+      invitedAt: new Date().toISOString(), acceptedAt: null, clerkUserId: null,
+    };
+    contacts.push(contact);
+    meta.trustedContacts = contacts;
+    await engine.setMeta(userId, meta);
+
+    const token = engine.signToken({ ownerId: userId, contactId: contact.id, email, role: cleanRole, exp: Date.now() + 365 * 24 * 3600 * 1000 });
+    await engine.sendEmail({
+      to: email,
+      subject: `${engine.displayName(user)} named you a trusted contact`,
+      html: engine.inviteEmail({ ownerName: engine.displayName(user), contactName: name, role: cleanRole, acceptUrl: `${engine.APP_URL}/executor?invite=${encodeURIComponent(token)}` }),
+    });
+    res.json({ ok: true, contact });
+  } catch (err) {
+    console.error('contacts add:', err.message);
+    res.status(500).json({ error: 'Could not add contact' });
+  }
+});
+
+app.post('/api/contacts/:id/resend', requireAuth, async (req, res) => {
+  const { userId } = getAuth(req);
+  try {
+    const { user, meta } = await engine.getMeta(userId);
+    const contact = (meta.trustedContacts || []).find((c) => c.id === req.params.id);
+    if (!contact) return res.status(404).json({ error: 'Contact not found' });
+    const token = engine.signToken({ ownerId: userId, contactId: contact.id, email: contact.email, role: contact.role, exp: Date.now() + 365 * 24 * 3600 * 1000 });
+    await engine.sendEmail({
+      to: contact.email,
+      subject: `Reminder: ${engine.displayName(user)} named you a trusted contact`,
+      html: engine.inviteEmail({ ownerName: engine.displayName(user), contactName: contact.name, role: contact.role, acceptUrl: `${engine.APP_URL}/executor?invite=${encodeURIComponent(token)}` }),
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('contacts resend:', err.message);
+    res.status(500).json({ error: 'Could not resend invite' });
+  }
+});
+
+app.delete('/api/contacts/:id', requireAuth, async (req, res) => {
+  const { userId } = getAuth(req);
+  try {
+    const { meta } = await engine.getMeta(userId);
+    meta.trustedContacts = (meta.trustedContacts || []).filter((c) => c.id !== req.params.id);
+    await engine.setMeta(userId, meta);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('contacts delete:', err.message);
+    res.status(500).json({ error: 'Could not remove contact' });
+  }
+});
+
+// ─── Trusted contact accepts their invite (links their account to the owner)
+app.post('/api/invite/accept', requireAuth, async (req, res) => {
+  const { userId } = getAuth(req);
+  const payload = engine.verifyToken((req.body || {}).token);
+  if (!payload || !payload.ownerId || !payload.contactId) {
+    return res.status(400).json({ error: 'This invitation link is invalid or has expired.' });
+  }
+  try {
+    const { user: owner, meta } = await engine.getMeta(payload.ownerId);
+    const contact = (meta.trustedContacts || []).find((c) => c.id === payload.contactId);
+    if (!contact) return res.status(404).json({ error: 'This invitation is no longer valid.' });
+
+    contact.status = 'active';
+    contact.acceptedAt = new Date().toISOString();
+    contact.clerkUserId = userId;
+    await engine.setMeta(payload.ownerId, meta);
+
+    // Record the assignment on the contact's own account
+    const me = await engine.getMeta(userId);
+    const assignments = me.meta.executorFor || [];
+    if (!assignments.some((a) => a.ownerId === payload.ownerId)) {
+      assignments.push({ ownerId: payload.ownerId, ownerName: engine.displayName(owner), role: contact.role, acceptedAt: contact.acceptedAt });
+    }
+    me.meta.executorFor = assignments;
+    await engine.setMeta(userId, me.meta);
+
+    res.json({ ok: true, ownerName: engine.displayName(owner), role: contact.role });
+  } catch (err) {
+    console.error('invite accept:', err.message);
+    res.status(500).json({ error: 'Could not accept invitation' });
+  }
+});
+
+// ─── Executor: list the owners I am responsible for ──────────────────────
+app.get('/api/executor/assignments', requireAuth, async (req, res) => {
+  const { userId } = getAuth(req);
+  try {
+    const { meta } = await engine.getMeta(userId);
+    const assignments = meta.executorFor || [];
+    // Enrich with each owner's current verification status
+    const out = [];
+    for (const a of assignments) {
+      try {
+        const { meta: om } = await engine.getMeta(a.ownerId);
+        out.push({ ...a, status: (om.verification && om.verification.status) || 'active' });
+      } catch {
+        out.push({ ...a, status: 'unknown' });
+      }
+    }
+    res.json({ assignments: out });
+  } catch (err) {
+    console.error('assignments:', err.message);
+    res.status(500).json({ error: 'Could not load assignments' });
+  }
+});
+
+// Helper: is `userId` an active contact of `ownerId`? returns the contact or null
+async function activeContactOf(ownerId, userId) {
+  const { user, meta } = await engine.getMeta(ownerId);
+  const contact = (meta.trustedContacts || []).find((c) => c.clerkUserId === userId && c.status === 'active');
+  return { owner: user, meta, contact };
+}
+
+// ─── Executor: report a passing ──────────────────────────────────────────
+app.post('/api/executor/report-death', requireAuth, async (req, res) => {
+  const { userId } = getAuth(req);
+  const { ownerId, deathDate } = req.body || {};
+  if (!ownerId) return res.status(400).json({ error: 'Missing ownerId' });
+  try {
+    const { owner, meta, contact } = await activeContactOf(ownerId, userId);
+    if (!contact || contact.role !== 'executor') {
+      return res.status(403).json({ error: 'Only an active executor can report a passing.' });
+    }
+    if (meta.verification && meta.verification.status === 'verified_deceased') {
+      return res.status(409).json({ error: 'This account is already verified.' });
+    }
+    const graceUntil = new Date(Date.now() + engine.GRACE_DAYS * 24 * 3600 * 1000).toISOString();
+    meta.verification = {
+      status: 'pending',
+      reportedBy: contact.id,
+      reportedByName: contact.name,
+      reportedAt: new Date().toISOString(),
+      deathDate: deathDate || null,
+      threshold: engine.DEFAULT_THRESHOLD,
+      graceUntil,
+      confirmations: [{ contactId: contact.id, name: contact.name, vote: 'confirm', at: new Date().toISOString() }],
+      cancelled: false,
+    };
+    await engine.setMeta(ownerId, meta);
+
+    // Proof-of-life email to the owner (token-authenticated cancel link)
+    const cancelToken = engine.signToken({ ownerId, action: 'cancel', exp: Date.now() + (engine.GRACE_DAYS + 7) * 24 * 3600 * 1000 });
+    const ownerEmail = engine.primaryEmail(owner);
+    if (ownerEmail) {
+      await engine.sendEmail({
+        to: ownerEmail,
+        subject: 'Important: please confirm you are still here',
+        html: engine.deathReportedToOwnerEmail({ ownerName: engine.displayName(owner), reporterName: contact.name, cancelUrl: `${engine.APP_URL}/alive?token=${encodeURIComponent(cancelToken)}`, graceDays: engine.GRACE_DAYS }),
+      });
+    }
+    // Ask the other trusted contacts to confirm (M-of-N)
+    for (const c of meta.trustedContacts || []) {
+      if (c.id === contact.id || c.status !== 'active' || !c.email) continue;
+      await engine.sendEmail({
+        to: c.email,
+        subject: `Please confirm: a passing was reported for ${engine.displayName(owner)}`,
+        html: engine.confirmRequestEmail({ ownerName: engine.displayName(owner), contactName: c.name, reporterName: contact.name, confirmUrl: `${engine.APP_URL}/executor` }),
+      });
+    }
+    res.json({ ok: true, graceUntil, threshold: engine.DEFAULT_THRESHOLD, confirmations: 1 });
+  } catch (err) {
+    console.error('report-death:', err.message);
+    res.status(500).json({ error: 'Could not report passing' });
+  }
+});
+
+// ─── Trusted contact: confirm or dispute a reported passing ──────────────
+app.post('/api/executor/confirm', requireAuth, async (req, res) => {
+  const { userId } = getAuth(req);
+  const { ownerId, vote } = req.body || {};
+  const cleanVote = vote === 'dispute' ? 'dispute' : 'confirm';
+  if (!ownerId) return res.status(400).json({ error: 'Missing ownerId' });
+  try {
+    const { meta, contact } = await activeContactOf(ownerId, userId);
+    if (!contact) return res.status(403).json({ error: 'You are not an active contact for this person.' });
+    if (!meta.verification || meta.verification.status === 'active') {
+      return res.status(409).json({ error: 'There is no active report to confirm.' });
+    }
+    const confs = meta.verification.confirmations || [];
+    const existing = confs.find((c) => c.contactId === contact.id);
+    if (existing) existing.vote = cleanVote;
+    else confs.push({ contactId: contact.id, name: contact.name, vote: cleanVote, at: new Date().toISOString() });
+    meta.verification.confirmations = confs;
+    if (cleanVote === 'dispute') meta.verification.status = 'pending'; // a dispute blocks auto-verify
+    await engine.setMeta(ownerId, meta);
+    const confirms = confs.filter((c) => c.vote === 'confirm').length;
+    res.json({ ok: true, confirms, threshold: meta.verification.threshold });
+  } catch (err) {
+    console.error('confirm:', err.message);
+    res.status(500).json({ error: 'Could not record your confirmation' });
+  }
+});
+
+// ─── Executor: manually release a human-gated message (life event / condition)
+app.post('/api/executor/release', requireAuth, async (req, res) => {
+  const { userId } = getAuth(req);
+  const { ownerId, messageKey } = req.body || {};
+  if (!ownerId || !messageKey) return res.status(400).json({ error: 'Missing ownerId or messageKey' });
+  try {
+    const { meta, contact } = await activeContactOf(ownerId, userId);
+    if (!contact || contact.role !== 'executor') {
+      return res.status(403).json({ error: 'Only an active executor can release messages.' });
+    }
+    if (!meta.verification || meta.verification.status !== 'verified_deceased') {
+      return res.status(409).json({ error: 'Messages can only be released after the passing is verified.' });
+    }
+    meta.delivery = meta.delivery || { sent: {}, released: {} };
+    meta.delivery.released = meta.delivery.released || {};
+    meta.delivery.released[messageKey] = { at: new Date().toISOString(), by: contact.id };
+    await engine.setMeta(ownerId, meta);
+    // Deliver immediately rather than waiting for the daily sweep
+    const result = await engine.sweepUser(ownerId);
+    res.json({ ok: true, delivered: result.delivered });
+  } catch (err) {
+    console.error('release:', err.message);
+    res.status(500).json({ error: 'Could not release message' });
+  }
+});
+
+// ─── Executor: detail view of one owner (status + messages awaiting release)
+app.get('/api/executor/owner/:ownerId', requireAuth, async (req, res) => {
+  const { userId } = getAuth(req);
+  try {
+    const { owner, meta, contact } = await activeContactOf(req.params.ownerId, userId);
+    if (!contact) return res.status(403).json({ error: 'Not authorized for this person.' });
+    const v = meta.verification || { status: 'active' };
+    const messages = engine.enumerateMessages(meta.legacyLetterState).map((m) => ({
+      key: m.key, title: m.title, kind: m.kind, toName: m.toName,
+      needsHuman: engine.ruleNeedsHuman(m.rule),
+      rule: m.rule.delivery || 'on_passing',
+      released: !!(meta.delivery && meta.delivery.released && meta.delivery.released[m.key]),
+      sent: !!(meta.delivery && meta.delivery.sent && meta.delivery.sent[m.key]),
+    }));
+    res.json({
+      ownerName: engine.displayName(owner),
+      role: contact.role,
+      verification: {
+        status: v.status,
+        reportedByName: v.reportedByName || null,
+        graceUntil: v.graceUntil || null,
+        threshold: v.threshold || engine.DEFAULT_THRESHOLD,
+        confirms: (v.confirmations || []).filter((c) => c.vote === 'confirm').length,
+        disputes: (v.confirmations || []).filter((c) => c.vote === 'dispute').length,
+      },
+      messages,
+    });
+  } catch (err) {
+    console.error('executor owner detail:', err.message);
+    res.status(500).json({ error: 'Could not load details' });
+  }
+});
+
+// ─── Owner: my own verification status ───────────────────────────────────
+app.get('/api/verification/status', requireAuth, async (req, res) => {
+  const { userId } = getAuth(req);
+  try {
+    const { meta } = await engine.getMeta(userId);
+    const v = meta.verification || { status: 'active' };
+    res.json({ status: v.status, reportedByName: v.reportedByName || null, graceUntil: v.graceUntil || null });
+  } catch (err) {
+    res.status(500).json({ error: 'Could not load status' });
+  }
+});
+
+// ─── Owner: proof-of-life cancel (token-authenticated, no login required) ─
+app.post('/api/proof-of-life', async (req, res) => {
+  const payload = engine.verifyToken((req.body || {}).token);
+  if (!payload || payload.action !== 'cancel' || !payload.ownerId) {
+    return res.status(400).json({ error: 'This link is invalid or has expired.' });
+  }
+  try {
+    const { meta } = await engine.getMeta(payload.ownerId);
+    if (meta.verification) {
+      meta.verification.status = 'active';
+      meta.verification.cancelled = true;
+      meta.verification.cancelledAt = new Date().toISOString();
+      await engine.setMeta(payload.ownerId, meta);
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('proof-of-life:', err.message);
+    res.status(500).json({ error: 'Could not process request' });
+  }
+});
+
+// ─── Recipient portal: messages released to the logged-in person ─────────
+app.get('/api/portal/inbox', requireAuth, async (req, res) => {
+  const { userId } = getAuth(req);
+  try {
+    const me = await clerkClient.users.getUser(userId);
+    const myEmail = (engine.primaryEmail(me) || '').toLowerCase();
+    if (!myEmail) return res.json({ messages: [] });
+
+    const inbox = [];
+    await engine.forEachUser(async (owner) => {
+      const meta = owner.privateMetadata || {};
+      const sent = meta.delivery && meta.delivery.sent;
+      if (!sent || !Object.keys(sent).length) return;
+      const state = meta.legacyLetterState;
+      const messages = engine.enumerateMessages(state);
+      const recipientsWithEmail = (state?.recipients || []).filter((r) => r.email);
+      const ownerName = engine.displayName(owner);
+
+      for (const m of messages) {
+        if (!sent[m.key]) continue;
+        const isForMe =
+          m.kind === 'recipient'
+            ? (m.toEmail || '').toLowerCase() === myEmail
+            : recipientsWithEmail.some((r) => r.email.toLowerCase() === myEmail);
+        if (isForMe) {
+          inbox.push({ from: ownerName, title: m.title, text: m.text, deliveredAt: sent[m.key].at });
+        }
+      }
+    });
+    inbox.sort((a, b) => new Date(b.deliveredAt) - new Date(a.deliveredAt));
+    res.json({ messages: inbox });
+  } catch (err) {
+    console.error('portal inbox:', err.message);
+    res.status(500).json({ error: 'Could not load your messages' });
+  }
+});
+
+// ─── CRON: the daily sweep (Vercel Cron hits this; secured by CRON_SECRET) ─
+app.get('/api/cron/sweep', async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  const auth = req.headers.authorization || '';
+  const provided = auth.replace(/^Bearer\s+/i, '') || req.query.key;
+  if (secret && provided !== secret) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  try {
+    const summary = await engine.processSweep();
+    console.log('Cron sweep:', JSON.stringify(summary));
+    res.json({ ok: true, ...summary });
+  } catch (err) {
+    console.error('cron sweep:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Portal / executor / proof-of-life pages ─────────────────────────────
+function servePage(file) {
+  return (req, res) => {
+    try {
+      let html = fs.readFileSync(path.join(__dirname, file), 'utf8');
+      const pk = process.env.CLERK_PUBLISHABLE_KEY || '';
+      if (pk) {
+        try {
+          const b64 = pk.replace(/^pk_(test|live)_/, '');
+          const domain = Buffer.from(b64, 'base64').toString('utf8').replace(/\$$/, '');
+          const tag = `<script async crossorigin="anonymous" data-clerk-publishable-key="${htmlEncode(pk)}" src="https://${htmlEncode(domain)}/npm/@clerk/clerk-js@latest/dist/clerk.browser.js" type="text/javascript"></script>`;
+          html = html.replace('</head>', `${tag}\n</head>`);
+        } catch {}
+      }
+      res.type('html').send(html);
+    } catch (err) {
+      res.status(500).send('Page not found');
+    }
+  };
+}
+app.get('/executor', servePage('portal-executor.html'));
+app.get('/portal', servePage('portal-recipient.html'));
+app.get('/alive', servePage('portal-alive.html'));
 
 // ─── STATIC ASSETS (only from public/ subdir) ────
 // Note: legacy_letter.html is served by the '/' route above
