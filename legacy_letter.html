@@ -1378,6 +1378,7 @@ function editRecipient(rid){
   if (!r) return;
   const peopleData = state.chapters['people'] || {recipients:{}};
   const rd = (peopleData.recipients||{})[rid] || {text:'', seconds:0, mode:'text', delivery:'on_passing', specific:'', relationship:r.relation};
+  _normalizeDelivery(rd);
 
   const main = document.getElementById('main-content');
   let relOpts = RELATIONSHIPS.map(opt =>
@@ -1409,25 +1410,11 @@ function editRecipient(rid){
     + renderStartingPoints('recipient', rid, RECIPIENT_PROMPTS)
 
     + '<div class="rec-card">'
-    + '<div class="sec-field">'
-    + '<label class="sec-label">When should this message be released?<span class="opt-tag">Optional</span></label>'
-    + '<div style="font-size:11px;color:var(--ink-3);font-weight:600;margin-bottom:6px;margin-top:-2px">Your executor controls release. You choose the trigger.</div>'
-    + '<select class="sec-select" onchange="setRecipDelivery(\'' + rid + '\', this.value, this.options[this.selectedIndex].text)">'
-    + '<option value="on_passing"' + (rd.delivery==='on_passing'?' selected':'') + '>On my passing</option>'
-    + '<option value="next_birthday"' + (rd.delivery==='next_birthday'?' selected':'') + '>On their next birthday after I am gone</option>'
-    + '<option value="18_birthday"' + (rd.delivery==='18_birthday'?' selected':'') + '>On their 18th birthday</option>'
-    + '<option value="21_birthday"' + (rd.delivery==='21_birthday'?' selected':'') + '>On their 21st birthday</option>'
-    + '<option value="wedding_day"' + (rd.delivery==='wedding_day'?' selected':'') + '>On their wedding day</option>'
-    + '<option value="first_child"' + (rd.delivery==='first_child'?' selected':'') + '>When they have their first child</option>'
-    + '<option value="graduation"' + (rd.delivery==='graduation'?' selected':'') + '>On their graduation</option>'
-    + '<option value="1_year_after"' + (rd.delivery==='1_year_after'?' selected':'') + '>One year after I am gone</option>'
-    + '<option value="5_year_after"' + (rd.delivery==='5_year_after'?' selected':'') + '>Five years after I am gone</option>'
-    + '<option value="specific_date"' + (rd.delivery==='specific_date'?' selected':'') + '>On a specific date or event</option>'
-    + '</select>'
-    + '</div>'
     + '<div class="sec-field" style="margin-bottom:0">'
-    + '<label class="sec-label">Specific date or event (if applicable)<span class="opt-tag">Optional</span></label>'
-    + '<input type="text" class="sec-input" placeholder="e.g. Her 30th birthday / her wedding day / December 25 each year" value="' + escapeHtml(rd.specific||'') + '" oninput="updateRecipSpecific(\'' + rid + '\', this.value)">'
+    + '<label class="sec-label">When should this message be released?<span class="opt-tag">Optional</span></label>'
+    + '<div style="font-size:11px;color:var(--ink-3);font-weight:600;margin-bottom:8px;margin-top:-2px">Your executor controls release. You choose the trigger.</div>'
+    + '<select class="deliv-select" onchange="setModalDelivery(\'recipient\', \'' + rid + '\', this.value)">' + _deliveryMainOptions(rd.delivery||'on_passing') + '</select>'
+    + '<div id="delivsub-recipient-' + rid + '">' + _renderModalSubInputs('recipient', rid) + '</div>'
     + '</div>'
     + '</div>'
 
@@ -1570,6 +1557,53 @@ function _eventLabel(val, customText) {
   return val === 'custom_event' ? (customText || 'Custom event') : (LIFE_EVENT_LABELS[val] || val);
 }
 
+// Shared life-event <option> list used by both the inline chapter UI and the modal
+const _LIFE_EVENT_GROUPS = [
+  ['Relationships', [['wedding','Wedding / Marriage'],['engagement','Engagement'],['divorce','Divorce']]],
+  ['Education & Career', [['graduation_hs','High school graduation'],['graduation_college','College / university graduation'],['first_job','Starting first job'],['retirement','Retirement']]],
+  ['Family', [['first_child','Birth of first child'],['another_child','Birth of another child'],['leaving_home','Moving away from home'],['buying_home','Buying first home']]],
+  ['Milestones', [['18_birthday','18th birthday'],['21_birthday','21st birthday'],['30_birthday','30th birthday'],['40_birthday','40th birthday'],['50_birthday','50th birthday']]],
+  ['Difficult moments', [['health_diagnosis','Health diagnosis'],['major_loss','Experiencing a major loss'],['crisis','Personal crisis / dark moment']]]
+];
+function _lifeEventOptions(selected) {
+  let html = '<option value="">Choose a life event…</option>';
+  _LIFE_EVENT_GROUPS.forEach(([grp, items]) => {
+    html += `<optgroup label="${grp}">`;
+    items.forEach(([v, l]) => { html += `<option value="${v}"${selected===v?' selected':''}>${l}</option>`; });
+    html += '</optgroup>';
+  });
+  html += `<option value="custom_event"${selected==='custom_event'?' selected':''}>✏ Not listed — describe it below</option>`;
+  return html;
+}
+
+// Main delivery <select> options (grouped), shared by inline + modal
+function _deliveryMainOptions(cur) {
+  const groups = [
+    ['After passing', [
+      ['on_passing', 'On my passing'],
+      ['executor_unlock', 'When executor unlocks documents'],
+      ['1_year_after', 'One year after', cur==='anniversary'||cur==='1_year_after'],
+      ['5_year_after', 'Five years after'],
+      ['10_year_after', 'Ten years after'],
+    ]],
+    ['Life event', [['life_event', 'At a life event…']]],
+    ['Custom', [
+      ['specific_date', 'On a specific date'],
+      ['never_unless', 'Only under specific conditions'],
+    ]]
+  ];
+  let html = '';
+  groups.forEach(([grp, items]) => {
+    html += `<optgroup label="${grp}">`;
+    items.forEach(([v, l, forceSel]) => {
+      const sel = forceSel !== undefined ? forceSel : cur === v;
+      html += `<option value="${v}"${sel?' selected':''}>${l}</option>`;
+    });
+    html += '</optgroup>';
+  });
+  return html;
+}
+
 function _deliverySummary(d) {
   if (!d || !d.delivery) return '';
   const map = {
@@ -1600,49 +1634,11 @@ function _deliverySummary(d) {
 }
 
 function _renderDeliveryUI(d) {
+  _normalizeDelivery(d);
   const today = new Date().toISOString().split('T')[0];
   const cur = d.delivery || 'on_passing';
-
-  // Main selector
-  const mainOpts = [
-    ['After passing', [
-      ['on_passing', 'On my passing'],
-      ['executor_unlock', 'When executor unlocks documents'],
-      ['1_year_after', 'One year after', cur==='anniversary'||cur==='1_year_after'],
-      ['5_year_after', 'Five years after'],
-      ['10_year_after', 'Ten years after'],
-    ]],
-    ['Life event', [['life_event', 'At a life event…']]],
-    ['Custom', [
-      ['specific_date', 'On a specific date'],
-      ['never_unless', 'Only under specific conditions'],
-    ]]
-  ];
-  let mainHtml = '';
-  mainOpts.forEach(([grp, items]) => {
-    mainHtml += `<optgroup label="${grp}">`;
-    items.forEach(([v, l, forceSel]) => {
-      const sel = forceSel !== undefined ? forceSel : cur === v;
-      mainHtml += `<option value="${v}"${sel?' selected':''}>${l}</option>`;
-    });
-    mainHtml += '</optgroup>';
-  });
-
-  // Life events sub-selector
-  const lifeGroups = [
-    ['Relationships', [['wedding','Wedding / Marriage'],['engagement','Engagement'],['divorce','Divorce']]],
-    ['Education & Career', [['graduation_hs','High school graduation'],['graduation_college','College / university graduation'],['first_job','Starting first job'],['retirement','Retirement']]],
-    ['Family', [['first_child','Birth of first child'],['another_child','Birth of another child'],['leaving_home','Moving away from home'],['buying_home','Buying first home']]],
-    ['Milestones', [['18_birthday','18th birthday'],['21_birthday','21st birthday'],['30_birthday','30th birthday'],['40_birthday','40th birthday'],['50_birthday','50th birthday']]],
-    ['Difficult moments', [['health_diagnosis','Health diagnosis'],['major_loss','Experiencing a major loss'],['crisis','Personal crisis / dark moment']]]
-  ];
-  let evtHtml = '<option value="">Choose a life event…</option>';
-  lifeGroups.forEach(([grp, items]) => {
-    evtHtml += `<optgroup label="${grp}">`;
-    items.forEach(([v, l]) => { evtHtml += `<option value="${v}"${d.deliveryEvent===v?' selected':''}>${l}</option>`; });
-    evtHtml += '</optgroup>';
-  });
-  evtHtml += `<option value="custom_event"${d.deliveryEvent==='custom_event'?' selected':''}>✏ Not listed — describe it below</option>`;
+  const mainHtml = _deliveryMainOptions(cur);
+  const evtHtml = _lifeEventOptions(d.deliveryEvent);
 
   const summary = _deliverySummary(d);
   const showDate  = cur === 'specific_date';
@@ -1952,52 +1948,153 @@ function buildDelivery(){
   CHAPTERS.filter(c=>c.id!=='people').forEach(ch => {
     const d = state.chapters[ch.id] || {};
     const hasContent = d.text && d.text.length > 30;
-    html += `
-      <div style="display:flex;align-items:center;gap:14px;padding:14px;background:var(--bg);border-radius:10px;border:1px solid var(--line)">
-        <div style="flex:1">
-          <b style="display:block;color:var(--navy);font-size:13px">Ch ${ch.n} · ${ch.title}</b>
-          <span style="font-size:11px;color:var(--ink-3);font-weight:600">${hasContent?'Recorded':'Not recorded yet'}</span>
-        </div>
-        <select onchange="state.chapters['${ch.id}']=state.chapters['${ch.id}']||{};state.chapters['${ch.id}'].delivery=this.value;saveState();showToast('Updated')" style="padding:8px 12px;background:#fff;border:1px solid var(--line-2);border-radius:8px;font-weight:700;font-size:12px;color:var(--navy)">
-          <optgroup label="After passing">
-            <option value="on_passing" ${d.delivery==='on_passing'?'selected':''}>On my passing</option>
-            <option value="executor_unlock" ${d.delivery==='executor_unlock'?'selected':''}>Executor unlock</option>
-            <option value="1_year_after" ${(d.delivery==='1_year_after'||d.delivery==='anniversary')?'selected':''}>One year after</option>
-            <option value="5_year_after" ${d.delivery==='5_year_after'?'selected':''}>Five years after</option>
-          </optgroup>
-          <optgroup label="Life event">
-            <option value="life_event" ${d.delivery==='life_event'?'selected':''}>At a life event…</option>
-          </optgroup>
-          <optgroup label="Custom">
-            <option value="specific_date" ${d.delivery==='specific_date'?'selected':''}>On a specific date</option>
-            <option value="never_unless" ${d.delivery==='never_unless'?'selected':''}>Specific conditions</option>
-          </optgroup>
-        </select>
-      </div>
-    `;
+    html += _deliveryModalRow('chapter', ch.id, 'Ch ' + ch.n + ' · ' + ch.title, hasContent?'Recorded':'Not recorded yet', d, null);
   });
   html += '<div style="font-size:11px;font-weight:800;color:var(--ink-3);letter-spacing:.06em;text-transform:uppercase;margin:14px 0 6px">Recipient messages</div>';
   const peopleData = state.chapters['people'] || {recipients:{}};
   state.recipients.forEach(r => {
     const rd = (peopleData.recipients||{})[r.id] || {};
-    html += `
-      <div style="display:flex;align-items:center;gap:14px;padding:14px;background:var(--bg);border-radius:10px;border:1px solid var(--line)">
-        <div class="recip-avatar" style="width:32px;height:32px;font-size:11px">${r.initial}</div>
-        <div style="flex:1">
-          <b style="display:block;color:var(--navy);font-size:13px">${r.name}</b>
-          <span style="font-size:11px;color:var(--ink-3);font-weight:600">${rd.text?'Recorded':'Not recorded'}</span>
-        </div>
-        <select onchange="setRecipDelivery('${r.id}',this.value,this.options[this.selectedIndex].text);showToast('Updated')" style="padding:8px 12px;background:#fff;border:1px solid var(--line-2);border-radius:8px;font-weight:700;font-size:12px;color:var(--navy)">
-          <option value="on_passing" ${rd.delivery==='on_passing'?'selected':''}>On my passing</option>
-          <option value="next_birthday" ${rd.delivery==='next_birthday'?'selected':''}>Next birthday</option>
-          <option value="18_birthday" ${rd.delivery==='18_birthday'?'selected':''}>18th birthday</option>
-          <option value="wedding_day" ${rd.delivery==='wedding_day'?'selected':''}>Wedding day</option>
-          <option value="first_child" ${rd.delivery==='first_child'?'selected':''}>First child</option>
-        </select>
-      </div>
-    `;
+    html += _deliveryModalRow('recipient', r.id, r.name, rd.text?'Recorded':'Not recorded', rd, r.initial);
   });
   list.innerHTML = html;
+}
+
+// Build one delivery row (chapter or recipient) with dropdown + expandable sub-inputs
+function _deliveryModalRow(type, id, label, status, d, avatar) {
+  _normalizeDelivery(d);
+  const cur = d.delivery || 'on_passing';
+  const av = avatar ? `<div class="recip-avatar" style="width:32px;height:32px;font-size:11px;flex-shrink:0">${avatar}</div>` : '';
+  return `
+    <div class="deliv-modal-row" style="background:var(--bg);border-radius:10px;border:1px solid var(--line);padding:14px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:14px">
+        ${av}
+        <div style="flex:1;min-width:0">
+          <b style="display:block;color:var(--navy);font-size:13px">${escapeHtml(label)}</b>
+          <span style="font-size:11px;color:var(--ink-3);font-weight:600">${status}</span>
+        </div>
+        <select onchange="setModalDelivery('${type}','${id}',this.value)" class="deliv-select" style="width:auto;min-width:170px;flex-shrink:0">${_deliveryMainOptions(cur)}</select>
+      </div>
+      <div id="delivsub-${type}-${id}">${_renderModalSubInputs(type, id)}</div>
+    </div>
+  `;
+}
+
+// Render only the sub-inputs (date / event / conditions / summary) for a modal row
+function _renderModalSubInputs(type, id) {
+  const d = _getDelivObj(type, id, true);
+  if (!d) return '';
+  _normalizeDelivery(d);
+  const cur = d.delivery || 'on_passing';
+  const today = new Date().toISOString().split('T')[0];
+  let inner = '';
+  if (cur === 'specific_date') {
+    inner = `
+      <div class="deliv-sub-row" style="margin-top:10px">
+        <span class="deliv-sub-icon">📅</span>
+        <div style="flex:1">
+          <label class="deliv-sub-label">Choose a delivery date</label>
+          <input type="date" class="deliv-date-input" value="${escapeAttr(d.deliveryDate||'')}" min="${today}" onchange="setModalDelivDate('${type}','${id}',this.value)">
+        </div>
+      </div>`;
+  } else if (cur === 'life_event') {
+    const showCustom = d.deliveryEvent === 'custom_event';
+    inner = `
+      <div class="deliv-sub-row" style="margin-top:10px">
+        <span class="deliv-sub-icon">🎯</span>
+        <div style="flex:1">
+          <label class="deliv-sub-label">Select the life event</label>
+          <select class="deliv-select" onchange="setModalDelivEvent('${type}','${id}',this.value)">${_lifeEventOptions(d.deliveryEvent)}</select>
+          ${showCustom ? `<input type="text" class="deliv-custom-input" style="margin-top:8px" placeholder="Describe the event…" value="${escapeAttr(d.deliveryCustomEvent||'')}" oninput="setModalDelivCustomEvent('${type}','${id}',this.value)">` : ''}
+        </div>
+      </div>`;
+  } else if (cur === 'never_unless') {
+    inner = `
+      <div class="deliv-sub-row" style="margin-top:10px">
+        <span class="deliv-sub-icon">⚙️</span>
+        <div style="flex:1">
+          <label class="deliv-sub-label">Describe the conditions</label>
+          <textarea class="deliv-conds-textarea" placeholder="e.g. Only release this if they ask about me directly." oninput="setModalDelivConditions('${type}','${id}',this.value)">${escapeHtml(d.deliveryConditions||'')}</textarea>
+        </div>
+      </div>`;
+  }
+  const summary = _deliverySummary(d);
+  if (summary) inner += `<div class="deliv-summary-row" style="margin-top:8px"><span class="ds-icon">📋</span> ${summary}</div>`;
+  return inner;
+}
+
+// Migrate legacy delivery values to the current scheme (keeps old saved state working)
+function _normalizeDelivery(d) {
+  if (!d || !d.delivery) return d;
+  const legacyEvents = { wedding_day:'wedding', first_child:'first_child', '18_birthday':'18_birthday', '21_birthday':'21_birthday', graduation:'graduation_college' };
+  if (d.delivery === 'anniversary') {
+    d.delivery = '1_year_after';
+  } else if (d.delivery === 'next_birthday') {
+    d.delivery = 'life_event'; d.deliveryEvent = 'custom_event';
+    if (!d.deliveryCustomEvent) d.deliveryCustomEvent = 'Their next birthday after I am gone';
+  } else if (legacyEvents[d.delivery]) {
+    d.deliveryEvent = legacyEvents[d.delivery]; d.delivery = 'life_event';
+  }
+  // Carry over a free-text "specific" field from the old recipient editor
+  if (d.specific && d.delivery === 'specific_date' && !d.deliveryCustomEvent && !d.deliveryDate) {
+    d.delivery = 'life_event'; d.deliveryEvent = 'custom_event'; d.deliveryCustomEvent = d.specific;
+  }
+  return d;
+}
+
+// Resolve (and optionally create) the delivery-data object for a chapter or recipient
+function _getDelivObj(type, id, create) {
+  if (type === 'chapter') {
+    if (!state.chapters[id]) { if (!create) return null; state.chapters[id] = {delivery:'on_passing'}; }
+    return state.chapters[id];
+  }
+  if (!state.chapters['people']) { if (!create) return null; state.chapters['people'] = {recipients:{}}; }
+  if (!state.chapters['people'].recipients) state.chapters['people'].recipients = {};
+  if (!state.chapters['people'].recipients[id]) { if (!create) return null; state.chapters['people'].recipients[id] = {}; }
+  return state.chapters['people'].recipients[id];
+}
+
+function _refreshModalSub(type, id) {
+  const el = document.getElementById('delivsub-' + type + '-' + id);
+  if (el) el.innerHTML = _renderModalSubInputs(type, id);
+}
+
+function setModalDelivery(type, id, val) {
+  const d = _getDelivObj(type, id, true);
+  d.delivery = val;
+  if (type === 'recipient') d.deliveryLabel = _deliverySummary(d);
+  saveState();
+  _refreshModalSub(type, id);
+  showToast('Updated');
+}
+function setModalDelivDate(type, id, val) {
+  const d = _getDelivObj(type, id, true);
+  d.deliveryDate = val;
+  if (type === 'recipient') d.deliveryLabel = _deliverySummary(d);
+  saveState();
+  _refreshModalSub(type, id);
+}
+function setModalDelivEvent(type, id, val) {
+  const d = _getDelivObj(type, id, true);
+  d.deliveryEvent = val;
+  if (type === 'recipient') d.deliveryLabel = _deliverySummary(d);
+  saveState();
+  _refreshModalSub(type, id);
+}
+function setModalDelivCustomEvent(type, id, val) {
+  const d = _getDelivObj(type, id, true);
+  d.deliveryCustomEvent = val;
+  if (type === 'recipient') d.deliveryLabel = _deliverySummary(d);
+  saveState();
+  const s = document.querySelector('#delivsub-' + type + '-' + id + ' .deliv-summary-row');
+  if (s) s.innerHTML = '<span class="ds-icon">📋</span> ' + _deliverySummary(d);
+}
+function setModalDelivConditions(type, id, val) {
+  const d = _getDelivObj(type, id, true);
+  d.deliveryConditions = val;
+  if (type === 'recipient') d.deliveryLabel = _deliverySummary(d);
+  saveState();
+  const s = document.querySelector('#delivsub-' + type + '-' + id + ' .deliv-summary-row');
+  if (s) s.innerHTML = '<span class="ds-icon">📋</span> ' + _deliverySummary(d);
 }
 
 // ─── INVITE / SHARE ──────────────────────────────
