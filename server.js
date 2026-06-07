@@ -37,6 +37,33 @@ const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
 
 app.use(express.json({ limit: '10mb' }));
 
+// ─── SITE-WIDE PASSWORD GATE (pre-launch privacy) ────────────────────────
+// Challenges browser page loads with HTTP Basic Auth so the public can't see
+// the app before launch. API routes are exempt — they're already protected by
+// Clerk (requireAuth) or the cron secret, and the app's own fetch calls send a
+// Bearer token that would otherwise collide with Basic Auth. Active only when
+// both env vars are set (so it never accidentally locks out local dev).
+const SITE_USER = process.env.SITE_BASIC_USER;
+const SITE_PASS = process.env.SITE_BASIC_PASS;
+if (SITE_USER && SITE_PASS) {
+  app.use((req, res, next) => {
+    if (req.path.startsWith('/api/')) return next(); // Clerk/cron-secured
+    const hdr = req.headers.authorization || '';
+    if (hdr.startsWith('Basic ')) {
+      let decoded = '';
+      try { decoded = Buffer.from(hdr.slice(6), 'base64').toString('utf8'); } catch {}
+      const i = decoded.indexOf(':');
+      const u = i >= 0 ? decoded.slice(0, i) : '';
+      const p = i >= 0 ? decoded.slice(i + 1) : '';
+      const okU = u.length === SITE_USER.length && crypto.timingSafeEqual(Buffer.from(u), Buffer.from(SITE_USER));
+      const okP = p.length === SITE_PASS.length && crypto.timingSafeEqual(Buffer.from(p), Buffer.from(SITE_PASS));
+      if (okU && okP) return next();
+    }
+    res.set('WWW-Authenticate', 'Basic realm="Legacy Message private preview"');
+    return res.status(401).send('Authentication required.');
+  });
+}
+
 // Vercel serverless only allows writes to /tmp; fall back to local tmp/ in dev
 const TMP_DIR = process.env.VERCEL ? '/tmp' : path.join(__dirname, 'tmp');
 
