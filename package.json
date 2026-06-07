@@ -9,6 +9,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.55.0",
+    "@aws-sdk/client-s3": "^3.1063.0",
+    "@aws-sdk/s3-request-presigner": "^3.1063.0",
     "@clerk/express": "^2.1.23",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",

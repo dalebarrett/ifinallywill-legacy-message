@@ -140,6 +140,58 @@ function messageReleasedEmail({ ownerName, recipientName, portalUrl, preview }) 
     <p style="font-size:12px;color:#8098A8;line-height:1.6;margin:0">For your privacy, you may be asked to verify your identity before viewing.</p>`);
 }
 
+// ─── SMS via Twilio REST (no SDK dependency; no-ops without credentials) ──
+async function sendSMS({ to, body }) {
+  const sid = process.env.TWILIO_ACCOUNT_SID;
+  const tok = process.env.TWILIO_AUTH_TOKEN;
+  const from = process.env.TWILIO_FROM_NUMBER;
+  if (!sid || !tok || !from || !to) {
+    console.info(`[sms skipped — Twilio not configured or no number] to=${to || '(none)'}`);
+    return { skipped: true };
+  }
+  const url = `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`;
+  const params = new URLSearchParams({ To: to, From: from, Body: body });
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: 'Basic ' + Buffer.from(`${sid}:${tok}`).toString('base64'),
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: params,
+  });
+  if (!resp.ok) {
+    const t = await resp.text();
+    throw new Error(`Twilio ${resp.status}: ${t.slice(0, 180)}`);
+  }
+  return resp.json();
+}
+function ownerPhone(user) {
+  return user?.phoneNumbers?.[0]?.phoneNumber || null;
+}
+
+// ─── Audit log (append-only, newest first, capped) ────────────────────────
+function pushAudit(meta, action, actor, detail) {
+  meta.auditLog = meta.auditLog || [];
+  meta.auditLog.unshift({ at: new Date().toISOString(), action, actor: actor || 'system', detail: detail || '' });
+  if (meta.auditLog.length > 200) meta.auditLog.length = 200;
+  return meta;
+}
+
+// ─── Dead-man's-switch escalation emails ──────────────────────────────────
+function dmsOwnerEmail({ ownerName, days, url }) {
+  return shell('A gentle check-in', `
+    <h1 style="font-size:22px;color:#0A2A4A;margin:0 0 14px">Just checking you're okay</h1>
+    <p style="font-size:14px;color:#5A6E80;line-height:1.6;margin:0 0 22px">Hi ${esc(ownerName)}, it's been about ${days} days since you last checked in on Legacy Message. No alarm — we just quietly keep watch so your messages are only ever delivered at the right time. Please open the app and tap "Check in" so we know all is well.</p>
+    <p style="text-align:center;margin:0 0 8px">${btn(url, 'Check in now')}</p>`);
+}
+function dmsExecutorEmail({ ownerName, contactName, days, portalUrl }) {
+  return shell('Please check on someone', `
+    <h1 style="font-size:22px;color:#0A2A4A;margin:0 0 14px">A quiet heads-up</h1>
+    <p style="font-size:14px;color:#5A6E80;line-height:1.6;margin:0 0 10px">Hi ${esc(contactName)},</p>
+    <p style="font-size:14px;color:#5A6E80;line-height:1.6;margin:0 0 22px"><strong>${esc(ownerName)}</strong> named you a trusted contact on Legacy Message and hasn't checked in for about ${days} days. This is just a backstop reminder — it does <strong>not</strong> mean anything has happened. If you're able, please check in on them. If something has happened, you can begin the confirmation process in your portal.</p>
+    <p style="text-align:center;margin:0 0 8px">${btn(portalUrl, 'Open executor portal')}</p>`);
+}
+
 // ─── Scheduling: compute when a message is due, from the death anchor ─────
 // Returns a Date, or null when the rule needs a human (life event / condition).
 function computeDueDate(rule, anchorISO) {
@@ -190,7 +242,10 @@ function enumerateMessages(state) {
         title: `For ${r.name}`,
         text: rd.text,
         rule: rd,
+        mediaKey: rd.mediaKey || null,
+        mediaType: rd.mediaType || null,
         toEmail: r.email || null,
+        toPhone: r.phone || null,
         toName: r.name,
       });
     }
@@ -207,6 +262,8 @@ function enumerateMessages(state) {
         title: d.title || chapId,
         text: d.text,
         rule: d,
+        mediaKey: d.mediaKey || null,
+        mediaType: d.mediaType || null,
         toEmail: null, // broadcast to all recipients in portal
         toName: null,
       });
@@ -237,12 +294,61 @@ async function findUsersByEmail(email) {
 // ─── Per-user processing (shared by the cron sweep and manual release) ────
 // 1) Advance a pending death-report (grace + M-of-N → verified).
 // 2) Deliver every due message for a verified-deceased owner (idempotent).
+async function processDms(user, meta, now, summary) {
+  const v = meta.verification;
+  if (v && (v.status === 'pending' || v.status === 'verified_deceased')) return false;
+  const activeContacts = (meta.trustedContacts || []).filter((c) => c.status === 'active' && c.email);
+  if (!activeContacts.length) return false; // nobody to escalate to → skip
+
+  const REMIND = Number(process.env.DMS_REMIND_DAYS || 60);
+  const ESCALATE = Number(process.env.DMS_ESCALATE_DAYS || 90);
+  const REPEAT = 14 * DAY_MS;
+  const anchor = meta.lastCheckin ? new Date(meta.lastCheckin).getTime() : user.createdAt || now;
+  const days = Math.floor((now - anchor) / DAY_MS);
+  const esc = meta.checkinEscalation || {};
+  let changed = false;
+
+  if (days >= ESCALATE) {
+    if (!esc.lastExecutorNudge || now - new Date(esc.lastExecutorNudge).getTime() > REPEAT) {
+      for (const c of activeContacts) {
+        try {
+          await sendEmail({ to: c.email, subject: `Please check on ${displayName(user)}`, html: dmsExecutorEmail({ ownerName: displayName(user), contactName: c.name, days, portalUrl: `${APP_URL}/executor` }) });
+        } catch (e) { summary.errors.push(`dms-exec-email ${user.id}: ${e.message}`); }
+        if (c.phone) { try { await sendSMS({ to: c.phone, body: `${displayName(user)} hasn't checked in on Legacy Message for ${days} days. Please check on them: ${APP_URL}/executor` }); } catch (e) { summary.errors.push(`dms-exec-sms: ${e.message}`); } }
+      }
+      esc.lastExecutorNudge = new Date(now).toISOString();
+      pushAudit(meta, 'dms_escalated_to_contacts', 'system', `${days} days without check-in`);
+      changed = true;
+      summary.escalated = (summary.escalated || 0) + 1;
+    }
+  } else if (days >= REMIND) {
+    if (!esc.lastOwnerNudge || now - new Date(esc.lastOwnerNudge).getTime() > REPEAT) {
+      const email = primaryEmail(user);
+      if (email) { try { await sendEmail({ to: email, subject: 'A gentle check-in from Legacy Message', html: dmsOwnerEmail({ ownerName: displayName(user), days, url: APP_URL }) }); } catch (e) { summary.errors.push(`dms-owner-email: ${e.message}`); } }
+      const ph = ownerPhone(user);
+      if (ph) { try { await sendSMS({ to: ph, body: `A gentle check-in from Legacy Message — please open the app to confirm you're here: ${APP_URL}` }); } catch (e) { summary.errors.push(`dms-owner-sms: ${e.message}`); } }
+      esc.lastOwnerNudge = new Date(now).toISOString();
+      pushAudit(meta, 'dms_reminded_owner', 'system', `${days} days without check-in`);
+      changed = true;
+    }
+  }
+  if (changed) meta.checkinEscalation = esc;
+  return changed;
+}
+
 async function processUser(user, now, summary) {
   const meta = user.privateMetadata || {};
   const v = meta.verification;
-  if (!v || v.status === 'active' || v.cancelled) return;
-
   let changed = false;
+
+  // ── Dead-man's-switch backstop for living owners ──
+  if (!v || v.status === 'active') {
+    if (await processDms(user, meta, now, summary)) changed = true;
+    if (!v || v.status === 'active') {
+      if (changed) { try { await setMeta(user.id, meta); } catch (e) { summary.errors.push(`save ${user.id}: ${e.message}`); } }
+      return;
+    }
+  }
 
   // ── Step 1: pending → verified_deceased ──
   if (v.status === 'pending') {
@@ -254,6 +360,7 @@ async function processUser(user, now, summary) {
       v.status = 'verified_deceased';
       v.verifiedAt = new Date(now).toISOString();
       v.deathAnchor = v.deathDate || v.verifiedAt;
+      pushAudit(meta, 'verified_deceased', 'system', `${confirms} confirmations, grace window elapsed`);
       changed = true;
       summary.verified++;
     }
@@ -305,6 +412,11 @@ async function processUser(user, now, summary) {
           to: targets.map((t) => t.email),
           channel: 'email+portal',
         };
+        // SMS nudge to recipients who have a phone on file
+        if (m.kind === 'recipient' && m.toPhone) {
+          try { await sendSMS({ to: m.toPhone, body: `${ownerName} left you a message on Legacy Message. Read it here: ${APP_URL}/portal` }); } catch (e) { summary.errors.push(`sms ${m.key}: ${e.message}`); }
+        }
+        pushAudit(meta, 'message_delivered', 'system', `${m.title} → ${targets.map((t) => t.email).join(', ') || 'portal'}`);
         changed = true;
         summary.delivered++;
       } catch (err) {
@@ -353,7 +465,10 @@ module.exports = {
   patchMeta,
   displayName,
   primaryEmail,
+  ownerPhone,
   sendEmail,
+  sendSMS,
+  pushAudit,
   inviteEmail,
   deathReportedToOwnerEmail,
   confirmRequestEmail,

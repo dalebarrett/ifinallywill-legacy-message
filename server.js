@@ -8,6 +8,17 @@ const OpenAI = require('openai');
 const { clerkMiddleware, getAuth, clerkClient } = require('@clerk/express');
 const crypto = require('crypto');
 const engine = require('./legacy-engine');
+const storage = require('./legacy-storage');
+
+// In-memory upload for media we forward to object storage (audio/video/photo)
+const mediaUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 60 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (/^(audio|video|image)\//.test(file.mimetype || '')) cb(null, true);
+    else cb(new Error('Only audio, video, or image files are accepted'), false);
+  },
+});
 
 // ─── STARTUP GUARDS ──────────────────────────────────
 if (!process.env.CLERK_SECRET_KEY) {
@@ -252,10 +263,12 @@ app.post('/api/checkin', requireAuth, async (req, res) => {
   try {
     const user = await clerkClient.users.getUser(userId);
     const pm = user.privateMetadata || {};
-    await clerkClient.users.updateUserMetadata(userId, {
-      privateMetadata: { ...pm, lastCheckin: new Date().toISOString() }
-    });
-    res.json({ ok: true, checkedIn: new Date().toISOString() });
+    const now = new Date().toISOString();
+    // Reset dead-man's-switch escalation state so nudges restart cleanly
+    const next = { ...pm, lastCheckin: now, checkinEscalation: {} };
+    engine.pushAudit(next, 'checkin', 'owner', '');
+    await clerkClient.users.updateUserMetadata(userId, { privateMetadata: next });
+    res.json({ ok: true, checkedIn: now });
   } catch (err) {
     console.error('Check-in error:', err.message);
     res.status(500).json({ error: 'Check-in failed' });
@@ -382,6 +395,7 @@ app.post('/api/contacts', requireAuth, async (req, res) => {
     };
     contacts.push(contact);
     meta.trustedContacts = contacts;
+    engine.pushAudit(meta, 'contact_invited', 'owner', `${name} (${cleanRole})`);
     await engine.setMeta(userId, meta);
 
     const token = engine.signToken({ ownerId: userId, contactId: contact.id, email, role: cleanRole, exp: Date.now() + 365 * 24 * 3600 * 1000 });
@@ -444,6 +458,7 @@ app.post('/api/invite/accept', requireAuth, async (req, res) => {
     contact.status = 'active';
     contact.acceptedAt = new Date().toISOString();
     contact.clerkUserId = userId;
+    engine.pushAudit(meta, 'contact_accepted', contact.name, `Accepted ${contact.role} role`);
     await engine.setMeta(payload.ownerId, meta);
 
     // Record the assignment on the contact's own account
@@ -517,6 +532,7 @@ app.post('/api/executor/report-death', requireAuth, async (req, res) => {
       confirmations: [{ contactId: contact.id, name: contact.name, vote: 'confirm', at: new Date().toISOString() }],
       cancelled: false,
     };
+    engine.pushAudit(meta, 'death_reported', contact.name, deathDate ? `Date of passing: ${deathDate}` : 'No date given');
     await engine.setMeta(ownerId, meta);
 
     // Proof-of-life email to the owner (token-authenticated cancel link)
@@ -563,6 +579,7 @@ app.post('/api/executor/confirm', requireAuth, async (req, res) => {
     else confs.push({ contactId: contact.id, name: contact.name, vote: cleanVote, at: new Date().toISOString() });
     meta.verification.confirmations = confs;
     if (cleanVote === 'dispute') meta.verification.status = 'pending'; // a dispute blocks auto-verify
+    engine.pushAudit(meta, cleanVote === 'dispute' ? 'death_disputed' : 'death_confirmed', contact.name, '');
     await engine.setMeta(ownerId, meta);
     const confirms = confs.filter((c) => c.vote === 'confirm').length;
     res.json({ ok: true, confirms, threshold: meta.verification.threshold });
@@ -588,6 +605,7 @@ app.post('/api/executor/release', requireAuth, async (req, res) => {
     meta.delivery = meta.delivery || { sent: {}, released: {} };
     meta.delivery.released = meta.delivery.released || {};
     meta.delivery.released[messageKey] = { at: new Date().toISOString(), by: contact.id };
+    engine.pushAudit(meta, 'message_released', contact.name, messageKey);
     await engine.setMeta(ownerId, meta);
     // Deliver immediately rather than waiting for the daily sweep
     const result = await engine.sweepUser(ownerId);
@@ -655,6 +673,7 @@ app.post('/api/proof-of-life', async (req, res) => {
       meta.verification.status = 'active';
       meta.verification.cancelled = true;
       meta.verification.cancelledAt = new Date().toISOString();
+      engine.pushAudit(meta, 'proof_of_life_cancel', 'owner', 'Owner confirmed they are alive');
       await engine.setMeta(payload.ownerId, meta);
     }
     res.json({ ok: true });
@@ -689,7 +708,10 @@ app.get('/api/portal/inbox', requireAuth, async (req, res) => {
             ? (m.toEmail || '').toLowerCase() === myEmail
             : recipientsWithEmail.some((r) => r.email.toLowerCase() === myEmail);
         if (isForMe) {
-          inbox.push({ from: ownerName, title: m.title, text: m.text, deliveredAt: sent[m.key].at });
+          inbox.push({
+            from: ownerName, title: m.title, text: m.text, deliveredAt: sent[m.key].at,
+            ownerId: owner.id, mediaKey: m.mediaKey || null, mediaType: m.mediaType || null,
+          });
         }
       }
     });
@@ -698,6 +720,86 @@ app.get('/api/portal/inbox', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('portal inbox:', err.message);
     res.status(500).json({ error: 'Could not load your messages' });
+  }
+});
+
+// ─── MEDIA: owner uploads a recording for later delivery ─────────────────
+app.post('/api/media/upload', requireAuth, mediaUpload.single('media'), async (req, res) => {
+  const { userId } = getAuth(req);
+  if (!req.file) return res.status(400).json({ error: 'No file received' });
+  try {
+    const mime = req.file.mimetype || 'application/octet-stream';
+    const ext = (mime.split('/')[1] || 'bin').split(';')[0];
+    const key = storage.makeKey(userId, ext);
+    await storage.putMedia(key, req.file.buffer, mime);
+    res.json({ ok: true, key, mediaType: mime, backend: storage.backend() });
+  } catch (err) {
+    console.error('media upload:', err.message);
+    res.status(500).json({ error: 'Could not store media: ' + err.message });
+  }
+});
+
+// ─── MEDIA: recipient plays back a delivered recording (access-controlled) ─
+app.get('/api/portal/media', requireAuth, async (req, res) => {
+  const { userId } = getAuth(req);
+  const { ownerId, key } = req.query;
+  if (!ownerId || !key) return res.status(400).json({ error: 'Missing ownerId or key' });
+  try {
+    const me = await clerkClient.users.getUser(userId);
+    const myEmail = (engine.primaryEmail(me) || '').toLowerCase();
+    const { meta } = await engine.getMeta(ownerId);
+    const sent = (meta.delivery && meta.delivery.sent) || {};
+    const state = meta.legacyLetterState;
+    const recipientsWithEmail = (state?.recipients || []).filter((r) => r.email);
+
+    // The requested key must belong to a message that was DELIVERED and is FOR this viewer
+    const authorized = engine.enumerateMessages(state).some((m) => {
+      if (m.mediaKey !== key || !sent[m.key]) return false;
+      return m.kind === 'recipient'
+        ? (m.toEmail || '').toLowerCase() === myEmail
+        : recipientsWithEmail.some((r) => r.email.toLowerCase() === myEmail);
+    });
+    if (!authorized) return res.status(403).json({ error: 'Not authorized to view this media.' });
+
+    if (storage.isConfigured()) {
+      const url = await storage.getSignedUrl(key, 600);
+      return res.redirect(url);
+    }
+    const local = storage.getLocal(key);
+    if (!local) return res.status(404).json({ error: 'Media not found' });
+    res.type(local.contentType);
+    return local.stream.pipe(res);
+  } catch (err) {
+    console.error('portal media:', err.message);
+    res.status(500).json({ error: 'Could not load media' });
+  }
+});
+
+// ─── Owner: estate dashboard summary + audit log ─────────────────────────
+app.get('/api/dashboard', requireAuth, async (req, res) => {
+  const { userId } = getAuth(req);
+  try {
+    const { user, meta } = await engine.getMeta(userId);
+    const v = meta.verification || { status: 'active' };
+    const contacts = (meta.trustedContacts || []).map((c) => ({ name: c.name, email: c.email, role: c.role, status: c.status }));
+    const sent = (meta.delivery && meta.delivery.sent) || {};
+    const messages = engine.enumerateMessages(meta.legacyLetterState).map((m) => ({
+      key: m.key, title: m.title, kind: m.kind, hasMedia: !!m.mediaKey,
+      rule: (m.rule && m.rule.delivery) || 'on_passing',
+      delivered: !!sent[m.key], deliveredAt: sent[m.key] ? sent[m.key].at : null,
+    }));
+    res.json({
+      ownerName: engine.displayName(user),
+      lastCheckin: meta.lastCheckin || null,
+      mediaBackend: storage.backend(),
+      verification: { status: v.status, threshold: v.threshold || engine.DEFAULT_THRESHOLD, confirms: (v.confirmations || []).filter((c) => c.vote === 'confirm').length },
+      contacts,
+      messages,
+      auditLog: (meta.auditLog || []).slice(0, 60),
+    });
+  } catch (err) {
+    console.error('dashboard:', err.message);
+    res.status(500).json({ error: 'Could not load dashboard' });
   }
 });
 

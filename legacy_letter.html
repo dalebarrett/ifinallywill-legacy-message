@@ -694,6 +694,7 @@ input,textarea,select{font-family:inherit;font-size:inherit;color:inherit;border
       <p class="exec-sub">Name the people who can confirm your passing and release your messages when the time comes.</p>
       <div id="execMiniList" class="exec-mini-list"></div>
       <button class="exec-manage-btn" onclick="openExecModal()">Manage trusted contacts</button>
+      <button class="exec-manage-btn" style="background:#fff;border:1px solid var(--line-2);color:var(--navy);margin-top:6px" onclick="openDashboard()">📊 Estate dashboard</button>
     </div>
   </aside>
 </div>
@@ -1445,6 +1446,10 @@ function editRecipient(rid){
     + '<input type="email" class="sec-input" placeholder="name@example.com" value="' + escapeHtml(r.email||'') + '" oninput="updateRecipEmail(\'' + rid + '\', this.value)">'
     + '</div>'
     + '<div class="sec-field">'
+    + '<label class="sec-label">Their phone<span class="opt-tag">Optional · for SMS</span></label>'
+    + '<input type="tel" class="sec-input" placeholder="+1 555 123 4567" value="' + escapeHtml(r.phone||'') + '" oninput="updateRecipPhone(\'' + rid + '\', this.value)">'
+    + '</div>'
+    + '<div class="sec-field">'
     + '<label class="sec-label">Your message to them<span class="req-tag">Required</span></label>'
     + '<div style="font-size:11px;color:var(--ink-3);font-weight:600;margin-bottom:6px;margin-top:-2px">This is their letter. Say what you would want to say one more time. Pick a starting prompt below or write freely.</div>'
     + '<textarea id="recipText" class="text-area" rows="6" placeholder="Start your message to ' + escapeHtml(r.name) + '..." oninput="updateRecipText(\'' + rid + '\', this.value)">' + escapeHtml(rd.text||'') + '</textarea>'
@@ -1479,6 +1484,11 @@ function updateRecipName(rid, val){
 function updateRecipEmail(rid, val){
   const r = state.recipients.find(x=>x.id===rid);
   if (r) r.email = val.trim();
+  saveState();
+}
+function updateRecipPhone(rid, val){
+  const r = state.recipients.find(x=>x.id===rid);
+  if (r) r.phone = val.trim();
   saveState();
 }
 function updateRecipRelationship(rid, val){
@@ -2835,6 +2845,9 @@ function beginActualRecording(){
       await idbPut({id, blob, name: filename, type: blob.type, size: blob.size, mediaType: kind, seconds, addedAt: new Date().toISOString()});
       const meta = {id, name: filename, type: blob.type, size: blob.size, mediaType: kind, seconds, addedAt: new Date().toISOString(), inIDB: true};
       attachMediaMeta(_scope, _scopeId, meta);
+
+      // Upload to cloud storage so this recording can be delivered to recipients later
+      _uploadMediaForDelivery(blob, filename, blob.type, _scope, _scopeId);
 
       // Auto-transcribe audio recordings for both chapters and recipients
       if (kind === 'audio') {
@@ -4220,6 +4233,34 @@ function _totalWords() {
   return total;
 }
 
+// ─── MEDIA UPLOAD FOR DELIVERY ───────────────────
+// After a recording is saved locally, push it to cloud storage and tag the
+// message with its key so the executor/portal can deliver and play it back.
+async function _uploadMediaForDelivery(blob, filename, mimeType, scope, scopeId) {
+  try {
+    if (!window.Clerk || !window.Clerk.user) return; // only for signed-in owners
+    const token = await _getToken();
+    const fd = new FormData();
+    fd.append('media', blob, filename);
+    const r = await fetch('/api/media/upload', { method: 'POST', headers: token ? { 'Authorization': 'Bearer ' + token } : {}, body: fd });
+    if (!r.ok) return;
+    const j = await r.json();
+    if (!j.key) return;
+    if (scope === 'chapter') {
+      if (!state.chapters[scopeId]) state.chapters[scopeId] = {};
+      state.chapters[scopeId].mediaKey = j.key;
+      state.chapters[scopeId].mediaType = j.mediaType;
+    } else if (scope === 'recipient') {
+      if (!state.chapters['people']) state.chapters['people'] = { recipients: {} };
+      if (!state.chapters['people'].recipients) state.chapters['people'].recipients = {};
+      if (!state.chapters['people'].recipients[scopeId]) state.chapters['people'].recipients[scopeId] = {};
+      state.chapters['people'].recipients[scopeId].mediaKey = j.key;
+      state.chapters['people'].recipients[scopeId].mediaType = j.mediaType;
+    }
+    saveState();
+  } catch (e) { /* non-fatal — the text version still delivers */ }
+}
+
 // ─── EXECUTORS / TRUSTED CONTACTS ────────────────
 function openExecModal() {
   const m = document.getElementById('execModal');
@@ -4322,6 +4363,60 @@ async function removeExec(id, name) {
   } catch (e) { showToast('Could not remove'); }
 }
 
+// ─── ESTATE DASHBOARD ────────────────────────────
+function openDashboard() {
+  const m = document.getElementById('dashModal');
+  if (m) m.classList.add('on');
+  loadDashboard();
+}
+function closeDashboard() {
+  const m = document.getElementById('dashModal');
+  if (m) m.classList.remove('on');
+}
+const _AUDIT_LABELS = {
+  contact_invited: 'Trusted contact invited', contact_accepted: 'Trusted contact accepted', contact_removed: 'Trusted contact removed',
+  death_reported: 'Passing reported', death_confirmed: 'Passing confirmed', death_disputed: 'Report disputed',
+  verified_deceased: 'Verified — delivery began', proof_of_life_cancel: 'Owner cancelled (proof of life)',
+  message_released: 'Message released by executor', message_delivered: 'Message delivered',
+  checkin: 'Checked in', dms_reminded_owner: "Dead-man's-switch reminder sent", dms_escalated_to_contacts: "Dead-man's-switch escalated to contacts"
+};
+function labelFor(rule) {
+  return ({ on_passing: 'On passing', executor_unlock: 'Executor unlock', '1_year_after': '1 year after', '5_year_after': '5 years after', '10_year_after': '10 years after', specific_date: 'On a date', life_event: 'At a life event', never_unless: 'Conditional' })[rule] || 'Scheduled';
+}
+async function loadDashboard() {
+  const body = document.getElementById('dashBody');
+  try {
+    const token = await _getToken();
+    const r = await fetch('/api/dashboard', { headers: token ? { 'Authorization': 'Bearer ' + token } : {} });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Failed');
+    const statusLabel = { active: 'Active (you\'re alive & well)', pending: 'Passing reported — confirming', verified_deceased: 'Verified — delivering' }[d.verification.status] || d.verification.status;
+    const checkin = d.lastCheckin ? new Date(d.lastCheckin).toLocaleDateString() : 'Never';
+    const deliveredCount = d.messages.filter(m => m.delivered).length;
+
+    body.innerHTML = `
+      <div class="dash-stat"><span class="ds-ic">🫀</span><div><div class="ds-t">Account status</div><div class="ds-v">${escapeHTML(statusLabel)}</div></div></div>
+      <div class="dash-stat"><span class="ds-ic">✓</span><div><div class="ds-t">Last check-in</div><div class="ds-v">${escapeHTML(checkin)}</div></div></div>
+      <div class="dash-stat"><span class="ds-ic">🛡</span><div><div class="ds-t">Trusted contacts</div><div class="ds-v">${d.contacts.length} (${d.contacts.filter(c => c.status === 'active').length} accepted)</div></div></div>
+      <div class="dash-stat"><span class="ds-ic">📬</span><div><div class="ds-t">Messages</div><div class="ds-v">${deliveredCount} of ${d.messages.length} delivered</div></div></div>
+      <div class="dash-stat"><span class="ds-ic">🎙</span><div><div class="ds-t">Media storage</div><div class="ds-v">${d.mediaBackend === 's3' ? 'Cloud (S3/R2)' : 'Local (dev only)'}</div></div></div>
+
+      <div class="dash-sec-h">Messages &amp; delivery status</div>
+      ${d.messages.length ? d.messages.map(m => `
+        <div class="dash-msg">
+          <span class="t">${escapeHTML(m.title)}${m.hasMedia ? ' 🎙' : ''}</span>
+          <span class="badge ${m.delivered ? 'del' : 'pend'}">${m.delivered ? 'Delivered' : labelFor(m.rule)}</span>
+        </div>`).join('') : '<div class="exec-empty">No messages written yet.</div>'}
+
+      <div class="dash-sec-h">Activity log</div>
+      ${(d.auditLog || []).length ? d.auditLog.map(a => `
+        <div class="dash-audit"><b>${escapeHTML(_AUDIT_LABELS[a.action] || a.action)}</b>${a.detail ? ' — ' + escapeHTML(a.detail) : ''}<br><span class="when">${new Date(a.at).toLocaleString()}${a.actor && a.actor !== 'system' ? ' · ' + escapeHTML(a.actor) : ''}</span></div>`).join('') : '<div class="exec-empty">No activity yet.</div>'}
+    `;
+  } catch (e) {
+    body.innerHTML = '<div class="exec-empty">Could not load dashboard.</div>';
+  }
+}
+
 function escapeHTML(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -4414,6 +4509,37 @@ renderChapterList = function() {
     </div>
   </div>
 </div>
+
+<!-- ESTATE DASHBOARD MODAL -->
+<div class="modal-overlay" id="dashModal" onclick="if(event.target===this)closeDashboard()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>📊 Estate Dashboard</h3>
+      <button class="modal-close" onclick="closeDashboard()">×</button>
+    </div>
+    <div class="modal-body" id="dashBody">
+      <div style="text-align:center;padding:30px"><span class="spin" style="display:inline-block;width:18px;height:18px;border:2px solid var(--line-2);border-top-color:var(--navy);border-radius:50%;animation:dashspin .7s linear infinite"></span></div>
+    </div>
+  </div>
+</div>
+<style>
+@keyframes dashspin{to{transform:rotate(360deg)}}
+.dash-stat{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--bg);border-radius:10px;border:1px solid var(--line);margin-bottom:10px}
+.dash-stat .ds-ic{font-size:20px}
+.dash-stat .ds-t{font-size:12px;color:var(--ink-3);font-weight:700}
+.dash-stat .ds-v{font-size:14px;color:var(--navy);font-weight:800}
+.dash-sec-h{font-size:11px;font-weight:800;color:var(--ink-3);letter-spacing:.06em;text-transform:uppercase;margin:18px 0 8px}
+.dash-msg{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}
+.dash-msg:last-child{border-bottom:none}
+.dash-msg .t{flex:1;color:var(--navy);font-weight:700}
+.dash-msg .badge{font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px}
+.dash-msg .badge.del{background:#ECFDF5;color:#16a34a}
+.dash-msg .badge.pend{background:#F1F5F9;color:#64748B}
+.dash-audit{font-size:12px;color:var(--ink-2);padding:7px 0;border-bottom:1px solid var(--line);line-height:1.4}
+.dash-audit:last-child{border:none}
+.dash-audit b{color:var(--navy)}
+.dash-audit .when{color:var(--ink-3);font-size:11px}
+</style>
 
 </body>
 </html>

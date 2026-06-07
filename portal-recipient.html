@@ -62,13 +62,24 @@ async function loadInbox(){
       list.innerHTML = '<div class="empty">No messages have been delivered to you yet.<br>When one is released, it will appear here — and we\'ll email you to let you know.</div>';
       return;
     }
-    list.innerHTML = messages.map(m=>`
+    list.innerHTML = messages.map(m=>{
+      let media = '';
+      if (m.mediaKey) {
+        const src = '/api/portal/media?ownerId='+encodeURIComponent(m.ownerId)+'&key='+encodeURIComponent(m.mediaKey);
+        const isVideo = (m.mediaType||'').startsWith('video');
+        media = isVideo
+          ? `<video controls preload="metadata" style="width:100%;border-radius:12px;margin:4px 0 18px;background:#000"><source src="${src}" type="${esc(m.mediaType)}"></video>`
+          : `<audio controls preload="metadata" style="width:100%;margin:4px 0 18px"><source src="${src}" type="${esc(m.mediaType)}"></audio>`;
+      }
+      return `
       <div class="letter">
         <div class="from">From ${esc(m.from)}</div>
         <h3>${esc(m.title)}</h3>
+        ${media}
         <div class="body">${esc(m.text)}</div>
         <div class="when">Delivered ${new Date(m.deliveredAt).toLocaleDateString(undefined,{year:'numeric',month:'long',day:'numeric'})}</div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   }catch(e){
     list.innerHTML = '<div class="empty">Could not load your messages right now. Please try again.</div>';
   }
