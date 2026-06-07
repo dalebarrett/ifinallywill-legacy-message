@@ -280,10 +280,40 @@ app.get('/api/checkin', requireAuth, async (req, res) => {
   try {
     const user = await clerkClient.users.getUser(userId);
     const pm = user.privateMetadata || {};
-    res.json({ lastCheckin: pm.lastCheckin || null });
+    res.json({ lastCheckin: pm.lastCheckin || null, snoozeUntil: pm.dmsSnoozeUntil || null });
   } catch (err) {
     console.error('Check-in status error:', err.message);
     res.status(500).json({ error: 'Failed to get check-in status' });
+  }
+});
+
+// ─── DMS SNOOZE: "don't bother me for N months" ──────────────────────────
+app.post('/api/checkin/snooze', requireAuth, async (req, res) => {
+  const { userId } = getAuth(req);
+  const months = Number((req.body || {}).months);
+  if (!Number.isFinite(months) || months < 0 || months > 120) {
+    return res.status(400).json({ error: 'Invalid snooze period' });
+  }
+  try {
+    const user = await clerkClient.users.getUser(userId);
+    const pm = user.privateMetadata || {};
+    const now = new Date();
+    // Snoozing is itself an affirmative "I'm here" — reset the clock + escalation
+    const next = { ...pm, lastCheckin: now.toISOString(), checkinEscalation: {} };
+    if (months === 0) {
+      delete next.dmsSnoozeUntil;
+      engine.pushAudit(next, 'dms_snooze_cancelled', 'owner', 'Reminders resumed');
+    } else {
+      const until = new Date(now.getTime());
+      until.setMonth(until.getMonth() + months);
+      next.dmsSnoozeUntil = until.toISOString();
+      engine.pushAudit(next, 'dms_snoozed', 'owner', `Paused ${months} month(s) → ${until.toISOString().slice(0, 10)}`);
+    }
+    await clerkClient.users.updateUserMetadata(userId, { privateMetadata: next });
+    res.json({ ok: true, snoozeUntil: next.dmsSnoozeUntil || null });
+  } catch (err) {
+    console.error('Snooze error:', err.message);
+    res.status(500).json({ error: 'Could not set snooze' });
   }
 });
 

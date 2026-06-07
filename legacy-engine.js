@@ -300,11 +300,21 @@ async function processDms(user, meta, now, summary) {
   const activeContacts = (meta.trustedContacts || []).filter((c) => c.status === 'active' && c.email);
   if (!activeContacts.length) return false; // nobody to escalate to → skip
 
+  // Snooze: stay completely silent until the snooze expires.
+  const snoozeMs = meta.dmsSnoozeUntil ? new Date(meta.dmsSnoozeUntil).getTime() : 0;
+  if (snoozeMs && now < snoozeMs) return false;
+
   const REMIND = Number(process.env.DMS_REMIND_DAYS || 60);
   const ESCALATE = Number(process.env.DMS_ESCALATE_DAYS || 90);
   const REPEAT = 14 * DAY_MS;
-  const anchor = meta.lastCheckin ? new Date(meta.lastCheckin).getTime() : user.createdAt || now;
-  const days = Math.floor((now - anchor) / DAY_MS);
+  // Baseline = most recent of last check-in, account creation, or a snooze that
+  // just expired — so after a 1-year snooze the gentle countdown starts fresh
+  // (reminder first, then escalation) instead of escalating instantly.
+  const baseline = Math.max(
+    meta.lastCheckin ? new Date(meta.lastCheckin).getTime() : user.createdAt || now,
+    snoozeMs
+  );
+  const days = Math.floor((now - baseline) / DAY_MS);
   const esc = meta.checkinEscalation || {};
   let changed = false;
 

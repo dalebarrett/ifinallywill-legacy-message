@@ -488,6 +488,11 @@ input,textarea,select{font-family:inherit;font-size:inherit;color:inherit;border
 .dms-widget .dms-danger{color:#dc2626;font-weight:800}
 .dms-widget button.dms-btn{width:100%;padding:8px;background:var(--navy);color:var(--yellow);border-radius:8px;font-weight:800;font-size:11px;letter-spacing:.04em;text-transform:uppercase;border:none;cursor:pointer}
 .dms-widget button.dms-btn:hover{background:var(--navy-d)}
+.dms-snooze-row{display:flex;gap:6px;margin-top:8px;align-items:stretch}
+.dms-snooze-sel{flex:1;min-width:0;padding:7px 8px;border-radius:7px;border:1px solid var(--line-2);font-size:11px;font-weight:700;color:var(--navy);background:#fff;font-family:inherit;cursor:pointer}
+.dms-snooze-sel:focus{border-color:var(--navy);outline:none}
+.dms-snooze-btn{padding:7px 12px;background:#fff;border:1px solid var(--line-2);color:var(--navy);border-radius:7px;font-weight:800;font-size:11px;letter-spacing:.03em;text-transform:uppercase;cursor:pointer;white-space:nowrap}
+.dms-snooze-btn:hover{border-color:var(--navy);background:var(--bg)}
 
 /* ── SEND EMAIL CARD ── */
 .send-email-card{background:linear-gradient(135deg,#0A2A4A,#071E38);border-radius:14px;padding:16px;margin-top:12px}
@@ -676,6 +681,7 @@ input,textarea,select{font-family:inherit;font-size:inherit;color:inherit;border
       <div class="dms-label">🕰 Dead Man’s Switch <span class="cloud-sync-dot" id="dmsDot" style="display:none"></span></div>
       <div class="dms-status" id="dmsStatus">Loading…</div>
       <button class="dms-btn" onclick="doCheckin()" id="dmsBtn">✓ Check in now</button>
+      <div class="dms-snooze-row" id="dmsSnoozeRow"></div>
     </div>
 
     <!-- SEND EMAIL -->
@@ -4073,8 +4079,19 @@ async function _refreshDmsStatus() {
     if (!token) return;
     const resp = await fetch('/api/checkin', { headers: { 'Authorization': 'Bearer ' + token } });
     if (!resp.ok) return;
-    const { lastCheckin } = await resp.json();
+    const { lastCheckin, snoozeUntil } = await resp.json();
     if (dot) dot.style.display = 'inline-block';
+
+    // Snoozed: reminders paused — show that, and offer to resume
+    if (snoozeUntil && new Date(snoozeUntil).getTime() > Date.now()) {
+      const until = new Date(snoozeUntil);
+      statusEl.innerHTML = '<span class="dms-ok">🔕 Paused</span> · reminders off until ' + until.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+      if (dot) dot.className = 'cloud-sync-dot offline';
+      _renderSnoozeRow(true);
+      return;
+    }
+    _renderSnoozeRow(false);
+
     if (!lastCheckin) {
       statusEl.innerHTML = '<span class="dms-warn">Never checked in.</span> Check in to confirm you\'re here so your letter isn\'t sent prematurely.';
     } else {
@@ -4092,6 +4109,62 @@ async function _refreshDmsStatus() {
       }
     }
   } catch (e) { /* non-fatal */ }
+}
+
+// Render the snooze controls: a dropdown of intervals, or a "resume" button when paused
+function _renderSnoozeRow(snoozed) {
+  const row = document.getElementById('dmsSnoozeRow');
+  if (!row) return;
+  if (snoozed) {
+    row.innerHTML = '<button class="dms-snooze-btn" style="flex:1" onclick="cancelSnooze()">🔔 Resume reminders</button>';
+  } else {
+    row.innerHTML =
+      '<select id="dmsSnoozeSel" class="dms-snooze-sel">' +
+      '<option value="3">Pause 3 months</option>' +
+      '<option value="6">Pause 6 months</option>' +
+      '<option value="12" selected>Pause 1 year</option>' +
+      '<option value="24">Pause 2 years</option>' +
+      '<option value="36">Pause 3 years</option>' +
+      '</select>' +
+      '<button class="dms-snooze-btn" onclick="doSnooze()">Pause</button>';
+  }
+}
+
+async function doSnooze() {
+  const sel = document.getElementById('dmsSnoozeSel');
+  const months = sel ? Number(sel.value) : 12;
+  try {
+    const token = await _getToken();
+    if (!token) throw new Error('Not signed in');
+    const resp = await fetch('/api/checkin/snooze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ months })
+    });
+    if (!resp.ok) throw new Error('Server error');
+    const label = months >= 12 ? (months / 12) + ' year' + (months >= 24 ? 's' : '') : months + ' months';
+    showToast('🔕 Reminders paused for ' + label);
+    await _refreshDmsStatus();
+  } catch (e) {
+    showToast('Could not pause: ' + e.message);
+  }
+}
+
+async function cancelSnooze() {
+  try {
+    const token = await _getToken();
+    if (!token) throw new Error('Not signed in');
+    const resp = await fetch('/api/checkin/snooze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ months: 0 })
+    });
+    if (!resp.ok) throw new Error('Server error');
+    showToast('🔔 Reminders resumed');
+    await _refreshDmsStatus();
+  } catch (e) {
+    showToast('Could not resume: ' + e.message);
+  }
 }
 
 async function doCheckin() {
@@ -4378,7 +4451,8 @@ const _AUDIT_LABELS = {
   death_reported: 'Passing reported', death_confirmed: 'Passing confirmed', death_disputed: 'Report disputed',
   verified_deceased: 'Verified — delivery began', proof_of_life_cancel: 'Owner cancelled (proof of life)',
   message_released: 'Message released by executor', message_delivered: 'Message delivered',
-  checkin: 'Checked in', dms_reminded_owner: "Dead-man's-switch reminder sent", dms_escalated_to_contacts: "Dead-man's-switch escalated to contacts"
+  checkin: 'Checked in', dms_reminded_owner: "Dead-man's-switch reminder sent", dms_escalated_to_contacts: "Dead-man's-switch escalated to contacts",
+  dms_snoozed: 'Check-in reminders paused', dms_snooze_cancelled: 'Check-in reminders resumed'
 };
 function labelFor(rule) {
   return ({ on_passing: 'On passing', executor_unlock: 'Executor unlock', '1_year_after': '1 year after', '5_year_after': '5 years after', '10_year_after': '10 years after', specific_date: 'On a date', life_event: 'At a life event', never_unless: 'Conditional' })[rule] || 'Scheduled';
