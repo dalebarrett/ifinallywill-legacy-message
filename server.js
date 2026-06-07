@@ -10,6 +10,7 @@ const crypto = require('crypto');
 const engine = require('./legacy-engine');
 const storage = require('./legacy-storage');
 const billing = require('./legacy-billing');
+const ifw = require('./legacy-integrations');
 
 // In-memory upload for media we forward to object storage (audio/video/photo)
 const mediaUpload = multer({
@@ -172,8 +173,17 @@ async function requirePremium(req, res, next) {
   if (!billing.billingEnforced()) return next(); // gate is off → allow everyone
   try {
     const { userId } = getAuth(req);
-    const { meta } = await billing.getMeta(userId);
+    const { user, meta } = await billing.getMeta(userId);
     if (billing.entitlement(meta).premium) return next();
+    // Safety-net PULL: maybe IFW granted them (will customer) since last sync
+    if (ifw.configured()) {
+      const email = user.emailAddresses?.[0]?.emailAddress;
+      const data = await ifw.fetchEntitlement(email);
+      if (ifw.ifwSaysPremium(data)) {
+        await ifw.persistGrantFromPull(userId, data);
+        return next();
+      }
+    }
     return res.status(402).json({ error: 'premium_required', message: 'Activating delivery requires a Premium plan.' });
   } catch (err) {
     return res.status(500).json({ error: 'Could not verify subscription' });
@@ -914,8 +924,17 @@ app.get('/api/billing/plans', (req, res) => {
 app.get('/api/billing/status', requireAuth, async (req, res) => {
   const { userId } = getAuth(req);
   try {
-    const { meta } = await billing.getMeta(userId);
-    const ent = billing.entitlement(meta);
+    let { user, meta } = await billing.getMeta(userId);
+    let ent = billing.entitlement(meta);
+    // Safety-net PULL from IFW (will customers granted free premium)
+    if (!ent.premium && ifw.configured()) {
+      const data = await ifw.fetchEntitlement(user.emailAddresses?.[0]?.emailAddress);
+      if (ifw.ifwSaysPremium(data)) {
+        await ifw.persistGrantFromPull(userId, data);
+        ({ meta } = await billing.getMeta(userId));
+        ent = billing.entitlement(meta);
+      }
+    }
     const sub = meta.subscription || {};
     res.json({
       entitlement: ent,
@@ -1098,6 +1117,98 @@ app.get('/api/admin/whoami', requireAuth, async (req, res) => {
   const { userId } = getAuth(req);
   res.json({ admin: await isAdminUser(userId) });
 });
+
+// ─── IFW FEDERATION ──────────────────────────────────────────────────────
+// IFW pushes a will-grant here when a customer completes a will. HMAC-signed
+// over `${timestamp}.${email}` with IFW_LL_WEBHOOK_SECRET. Idempotent.
+app.post('/api/ifw-grant', async (req, res) => {
+  const timestamp = req.headers['x-ifw-timestamp'];
+  const signature = req.headers['x-ifw-signature'];
+  const { email, source, willOrderId, grantedAt, status } = req.body || {};
+  if (!email) return res.status(400).json({ error: 'Missing email' });
+  if (!ifw.verifyGrant({ timestamp, email, signature })) {
+    return res.status(401).json({ error: 'Invalid signature' });
+  }
+  try {
+    const result = await ifw.applyGrant({ email, source, willOrderId, grantedAt, status });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error('ifw-grant:', err.message);
+    res.status(500).json({ error: 'Could not apply grant' });
+  }
+});
+
+// Signed metrics for IFW's unified owner dashboard.
+// HMAC over `${timestamp}.${path}` (path = /api/integrations/metrics).
+app.get('/api/integrations/metrics', async (req, res) => {
+  const timestamp = req.headers['x-ifw-timestamp'];
+  const signature = req.headers['x-ifw-signature'];
+  if (!ifw.verifyMetricsRequest(timestamp, signature)) {
+    return res.status(401).json({ error: 'Invalid signature' });
+  }
+  try {
+    res.json(await computeIfwMetrics());
+  } catch (err) {
+    console.error('ifw metrics:', err.message);
+    res.status(500).json({ error: 'Could not compute metrics' });
+  }
+});
+
+async function computeIfwMetrics() {
+  const now = Date.now(), d30 = 30 * 86400000;
+  let total = 0, signups30d = 0, willGranted = 0, comped = 0, outsiderPaid = 0;
+  let activeMonthly = 0, activeAnnual = 0, activeLifetime = 0, trialing = 0, pastDue = 0;
+  let mrrCents = 0;
+  let lettersCreated = 0, deliveriesPending = 0, deliveriesScheduled = 0, deliveriesSent = 0, executorsNamed = 0;
+
+  await engine.forEachUser(async (u) => {
+    total++;
+    if (u.createdAt && now - u.createdAt < d30) signups30d++;
+    const meta = u.privateMetadata || {};
+    const ent = billing.entitlement(meta);
+    const sub = meta.subscription || {};
+    if (ent.source === 'will_grant') willGranted++;
+    else if (ent.source === 'comp') comped++;
+    else if (ent.premium) {
+      outsiderPaid++;
+      const plan = billing.planById(ent.plan);
+      if (plan && plan.interval === 'month') { activeMonthly++; mrrCents += plan.priceCents; }
+      else if (plan && plan.interval === 'year') { activeAnnual++; mrrCents += Math.round(plan.priceCents / 12); }
+      else if (plan && plan.interval === 'one_time') activeLifetime++;
+    }
+    if (sub.status === 'trialing') trialing++;
+    if (sub.status === 'past_due') pastDue++;
+
+    const st = meta.legacyLetterState;
+    if (st) {
+      const msgs = engine.enumerateMessages(st);
+      if (msgs.length) lettersCreated++;
+      const v = meta.verification, sent = (meta.delivery && meta.delivery.sent) || {};
+      msgs.forEach((m) => {
+        if (sent[m.key]) deliveriesSent++;
+        else if (v && v.status === 'verified_deceased') deliveriesPending++;
+        else deliveriesScheduled++;
+      });
+    }
+    executorsNamed += (meta.trustedContacts || []).length;
+  });
+
+  let activePromoCodes = 0;
+  try { activePromoCodes = (await billing.listDiscountCodes()).filter((c) => c.active).length; } catch {}
+
+  return {
+    schemaVersion: 1, product: 'legacy', asOf: new Date().toISOString(),
+    revenue: { mrrCents, arrCents: mrrCents * 12, lifetimeSalesLast30dCents: 0, refundsLast30dCents: 0 },
+    subscribers: { activeMonthly, activeAnnual, activeLifetime, trialing, pastDue, canceled30d: 0, willGranted, comped, outsiderPaidTotal: outsiderPaid },
+    funnel: {
+      signupsLast30d: signups30d,
+      conversionRatePct: total ? Math.round((outsiderPaid / total) * 1000) / 10 : 0,
+      willAttachRatePct: total ? Math.round((willGranted / total) * 1000) / 10 : 0,
+    },
+    discounts: { activePromoCodes, redemptionsLast30d: 0, valueGivenCents: 0 },
+    ops: { lettersCreated, deliveriesPending, deliveriesScheduled, deliveriesSent, executorsNamed },
+  };
+}
 
 // ─── CRON: the daily sweep (Vercel Cron hits this; secured by CRON_SECRET) ─
 app.get('/api/cron/sweep', async (req, res) => {

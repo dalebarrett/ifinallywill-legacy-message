@@ -4488,13 +4488,24 @@ async function removeExec(id, name) {
 let _billingStatus = null;
 let _plansCache = null;
 
+let _billingPollWired = false;
 async function loadBillingStatus() {
   try {
     const token = await _getToken();
     const r = await fetch('/api/billing/status', { headers: token ? { 'Authorization': 'Bearer ' + token } : {} });
     if (!r.ok) return;
+    const wasPremium = _billingStatus && _billingStatus.entitlement && _billingStatus.entitlement.premium;
     _billingStatus = await r.json();
     _renderPlanCard();
+    // If an IFW will-grant just landed (e.g. they finished their will in another tab), celebrate once.
+    if (!wasPremium && _billingStatus.entitlement && _billingStatus.entitlement.premium && _billingStatus.entitlement.source === 'will_grant') {
+      showToast('✓ Your iFinallyWill membership unlocked delivery — at no charge');
+    }
+    // Re-check when the user returns to the tab (catches a will completed elsewhere)
+    if (!_billingPollWired) {
+      _billingPollWired = true;
+      window.addEventListener('focus', () => { if (window.Clerk && window.Clerk.user) loadBillingStatus(); });
+    }
   } catch (e) { /* non-fatal */ }
   // Admin link
   try {

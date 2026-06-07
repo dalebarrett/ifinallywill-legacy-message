@@ -70,6 +70,12 @@ function paypalConfigured() { return !!(process.env.PAYPAL_CLIENT_ID && process.
 function entitlement(meta) {
   const sub = (meta && meta.subscription) || {};
   const now = Date.now();
+  // IFW will-grant (pushed by IFW or persisted from a pull) — premium, free.
+  const g = meta && meta.ifwGrant;
+  if (g && g.status === 'active' && g.willCustomer) {
+    const ok = !g.currentPeriodEnd || new Date(g.currentPeriodEnd).getTime() > now - 3 * 86400000;
+    if (ok) return { premium: true, plan: 'will_grant', status: 'active', source: g.source || 'will_grant' };
+  }
   if (sub.compedUntil && new Date(sub.compedUntil).getTime() > now) {
     return { premium: true, plan: sub.plan || 'comp', status: 'comped', source: 'comp', since: sub.compedAt || null };
   }
@@ -133,9 +139,9 @@ async function createCheckout({ userId, user, planId, promoCode }) {
     success_url: `${APP_URL}/?billing=success`,
     cancel_url: `${APP_URL}/?billing=cancelled`,
     allow_promotion_codes: !promoCode, // show the field, OR apply one we were given
-    metadata: { clerkUserId: userId, planId: plan.id },
+    metadata: { clerkUserId: userId, planId: plan.id, app: 'legacy' },
   };
-  if (mode === 'subscription') params.subscription_data = { metadata: { clerkUserId: userId, planId: plan.id } };
+  if (mode === 'subscription') params.subscription_data = { metadata: { clerkUserId: userId, planId: plan.id, app: 'legacy' } };
   if (promoCode) {
     const promos = await s.promotionCodes.list({ code: promoCode, active: true, limit: 1 });
     if (!promos.data.length) throw new Error('That discount code is not valid.');
