@@ -3846,15 +3846,14 @@ dismissWelcome = function() {
 
   function renderWelcomeAuth() {
     if (!welcomeAuthDiv) return;
-    welcomeAuthDiv.innerHTML = '';
+    // Signed in → skip the welcome screen entirely. No "Continue as …" step:
+    // sign-in takes the user straight into the app.
     if (window.Clerk.user) {
-      const name = window.Clerk.user.firstName || window.Clerk.user.emailAddresses?.[0]?.emailAddress || 'back';
-      const btn = document.createElement('button');
-      btn.style.cssText = 'width:100%;padding:14px 32px;background:var(--navy);color:var(--yellow);border-radius:10px;font-weight:900;font-size:14px;font-family:inherit;cursor:pointer;border:none';
-      btn.textContent = `Continue as ${name} →`;
-      btn.onclick = () => _origDismissWelcome();
-      welcomeAuthDiv.appendChild(btn);
-    } else {
+      _origDismissWelcome();
+      return;
+    }
+    welcomeAuthDiv.innerHTML = '';
+    {
       const signUp = document.createElement('button');
       signUp.style.cssText = 'width:100%;padding:14px 32px;background:var(--navy);color:var(--yellow);border-radius:10px;font-weight:900;font-size:14px;font-family:inherit;cursor:pointer;border:none';
       signUp.textContent = 'Create free account →';
