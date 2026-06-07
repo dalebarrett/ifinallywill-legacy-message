@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin · Legacy Message</title>
+<style>
+  :root{--navy:#0A2A4A;--navy-d:#071E38;--yellow:#F5B800;--bg:#F2F5F9;--line:#E2EBF0;--line-2:#CDD9E5;--ink:#1A2F42;--ink-2:#5A6E80;--ink-3:#8098A8;--green:#16a34a;--red:#dc2626;--amber:#d97706}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,sans-serif;background:var(--bg);color:var(--ink)}
+  .top{background:var(--navy);color:#fff;padding:15px 24px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .brand{font-weight:900;font-size:16px;display:flex;align-items:center;gap:8px}
+  .brand .tag{font-size:9px;font-weight:800;color:var(--navy);background:var(--yellow);padding:3px 8px;border-radius:5px;letter-spacing:.06em;text-transform:uppercase}
+  #authArea{display:flex;gap:8px;align-items:center}
+  .btn{padding:9px 15px;border-radius:9px;font-weight:800;font-size:13px;border:none;cursor:pointer;font-family:inherit}
+  .btn-primary{background:var(--yellow);color:var(--navy)}
+  .btn-ghost{background:#fff;border:1px solid var(--line-2);color:var(--navy)}
+  .btn-sm{padding:6px 11px;font-size:11px;border-radius:7px}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .wrap{max-width:1080px;margin:0 auto;padding:28px 22px 80px}
+  h1{font-size:22px;color:var(--navy);margin:0 0 4px}
+  .sub{color:var(--ink-2);font-size:13px;margin:0 0 22px}
+  .gate,.denied{text-align:center;padding:70px 20px;color:var(--ink-2)}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:24px}
+  .stat{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+  .stat .v{font-family:'Nunito',sans-serif;font-weight:900;font-size:26px;color:var(--navy);line-height:1}
+  .stat .l{font-size:11px;color:var(--ink-3);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-top:6px}
+  .stat.good .v{color:var(--green)}
+  .panel{background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:18px}
+  .panel h2{font-size:15px;color:var(--navy);margin:0 0 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3);font-weight:800;padding:6px 8px;border-bottom:1px solid var(--line)}
+  td{padding:9px 8px;border-bottom:1px solid var(--line);color:var(--ink)}
+  tr:last-child td{border-bottom:none}
+  .pill{font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px}
+  .pill.premium{background:#ECFDF5;color:var(--green)}
+  .pill.free{background:#F1F5F9;color:#64748B}
+  .pill.comp{background:#EFF6FF;color:#1E40AF}
+  .pill.past_due{background:#FEF2F2;color:var(--red)}
+  .banner{border-radius:10px;padding:12px 14px;font-size:12px;font-weight:600;line-height:1.5;margin-bottom:16px}
+  .banner.warn{background:#FFFBEB;border:1px solid #FDE68A;color:#92400E}
+  .banner.info{background:#EFF6FF;border:1px solid #BFDBFE;color:#1E40AF}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  input,select{padding:8px 10px;border-radius:8px;border:1px solid var(--line-2);font-size:13px;font-family:inherit;color:var(--navy)}
+  .muted{color:var(--ink-3);font-size:12px}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(120px);background:var(--navy);color:#fff;padding:12px 22px;border-radius:10px;font-weight:700;font-size:13px;transition:transform .3s;z-index:100}
+  .toast.on{transform:translateX(-50%) translateY(0)}
+  .hide{display:none!important}
+  .spin{display:inline-block;width:16px;height:16px;border:2px solid var(--line-2);border-top-color:var(--navy);border-radius:50%;animation:s .7s linear infinite}
+  @keyframes s{to{transform:rotate(360deg)}}
+  .plan-chip{display:inline-flex;gap:6px;align-items:center;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:8px 12px;font-size:12px;font-weight:700;color:var(--navy)}
+  .plan-chip .price{color:var(--ink-3);font-weight:700}
+  .dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+  .dot.on{background:var(--green)} .dot.off{background:var(--line-2)}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="brand"><span class="tag">Admin</span> Legacy Message</div>
+  <div id="authArea"></div>
+</div>
+<div class="wrap">
+  <div id="gate" class="gate hide">
+    <h1>Admin sign-in</h1>
+    <p>Sign in with an administrator account.</p>
+    <button class="btn btn-primary" onclick="window.Clerk.openSignIn({})">Sign in</button>
+  </div>
+  <div id="denied" class="denied hide">
+    <h1>Not authorized</h1>
+    <p>This account doesn't have admin access. Ask an owner to add your email to <code>ADMIN_EMAILS</code>.</p>
+  </div>
+  <div id="content" class="hide">
+    <h1>Service administration</h1>
+    <p class="sub">Subscriptions, pricing, discount codes, and customers.</p>
+    <div id="enforceBanner"></div>
+
+    <div class="cards" id="metrics"><div class="stat"><div class="v"><span class="spin"></span></div><div class="l">Loading…</div></div></div>
+
+    <div class="panel">
+      <h2>Plans &amp; pricing</h2>
+      <div id="plans" class="row"></div>
+      <p class="muted" style="margin:12px 0 0">Pricing and the catalog are managed in Stripe/PayPal. Each plan charges via its configured Price/Plan ID; a green dot means it's wired up.</p>
+    </div>
+
+    <div class="panel">
+      <h2>Discount codes <button class="btn btn-ghost btn-sm" onclick="toggleNewCode()">+ New code</button></h2>
+      <div id="newCode" class="hide" style="margin-bottom:14px">
+        <div class="row">
+          <input id="dcCode" placeholder="CODE (optional)" style="width:140px">
+          <select id="dcType"><option value="percent">% off</option><option value="amount">$ off</option></select>
+          <input id="dcValue" type="number" placeholder="value" style="width:90px">
+          <input id="dcMax" type="number" placeholder="max uses" style="width:100px">
+          <input id="dcMonths" type="number" placeholder="repeat months" style="width:130px">
+          <button class="btn btn-primary btn-sm" onclick="createCode()" id="dcBtn">Create</button>
+        </div>
+      </div>
+      <div id="discounts"><div class="muted">Loading…</div></div>
+    </div>
+
+    <div class="panel">
+      <h2>Customers &amp; subscriptions <span class="muted" id="userCount"></span></h2>
+      <div id="users"><div class="muted">Loading…</div></div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('on');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('on'),2800);}
+async function getToken(){try{return await window.Clerk?.session?.getToken()||null;}catch{return null;}}
+async function api(path, opts={}){
+  const token = await getToken();
+  const r = await fetch(path,{...opts, headers:{'Content-Type':'application/json', ...(token?{'Authorization':'Bearer '+token}:{}), ...(opts.headers||{})}});
+  const j = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(j.error||j.message||('Error '+r.status));
+  return j;
+}
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+async function loadAll(){
+  loadMetrics(); loadPlans(); loadDiscounts(); loadUsers();
+}
+
+async function loadMetrics(){
+  try{
+    const m = await api('/api/admin/metrics');
+    document.getElementById('metrics').innerHTML = [
+      ['v', m.total, 'Total users'],
+      ['good', m.paid, 'Paid subscribers'],
+      ['v', m.comped, 'Comped'],
+      ['v', m.free, 'Free'],
+      ['good', m.mrr, 'Est. MRR'],
+      ['v', m.pastDue, 'Past due'],
+    ].map(([cls,val,label])=>`<div class="stat ${cls==='good'?'good':''}"><div class="v">${esc(val)}</div><div class="l">${esc(label)}</div></div>`).join('');
+  }catch(e){ document.getElementById('metrics').innerHTML = '<div class="banner warn">'+esc(e.message)+'</div>'; }
+}
+
+async function loadPlans(){
+  try{
+    const { plans, stripe, paypal, enforced } = await api('/api/billing/plans');
+    document.getElementById('plans').innerHTML = plans.map(p=>`
+      <div class="plan-chip"><span class="dot ${p.stripeReady||p.id==='free'?'on':'off'}"></span>${esc(p.name)} <span class="price">${esc(p.price)}${p.interval&&p.interval!=='one_time'?'/'+p.interval:''}</span></div>`).join('');
+    const eb = document.getElementById('enforceBanner');
+    eb.innerHTML = `<div class="banner ${enforced?'info':'warn'}">
+      Payment processors: Stripe <b>${stripe?'connected':'not configured'}</b> · PayPal <b>${paypal?'connected':'not configured'}</b>.
+      Paywall enforcement is <b>${enforced?'ON':'OFF'}</b>${enforced?'':' — set BILLING_ENFORCE=true to require Premium for delivery features.'}</div>`;
+  }catch(e){}
+}
+
+async function loadDiscounts(){
+  const el = document.getElementById('discounts');
+  try{
+    const { stripe, codes } = await api('/api/admin/discounts');
+    if(!stripe){ el.innerHTML = '<div class="banner warn">Connect Stripe to create and manage discount codes.</div>'; return; }
+    if(!codes.length){ el.innerHTML = '<div class="muted">No discount codes yet.</div>'; return; }
+    el.innerHTML = '<table><thead><tr><th>Code</th><th>Discount</th><th>Used</th><th>Limit</th><th>Status</th><th></th></tr></thead><tbody>'
+      + codes.map(c=>`<tr>
+          <td><b>${esc(c.code)}</b></td>
+          <td>${c.percentOff?c.percentOff+'%':'$'+((c.amountOff||0)/100).toFixed(2)} off</td>
+          <td>${c.timesRedeemed}</td>
+          <td>${c.maxRedemptions||'∞'}</td>
+          <td><span class="pill ${c.active?'premium':'free'}">${c.active?'Active':'Inactive'}</span></td>
+          <td>${c.active?`<button class="btn btn-ghost btn-sm" onclick="deactivate('${c.id}')">Deactivate</button>`:''}</td>
+        </tr>`).join('') + '</tbody></table>';
+  }catch(e){ el.innerHTML = '<div class="banner warn">'+esc(e.message)+'</div>'; }
+}
+function toggleNewCode(){ document.getElementById('newCode').classList.toggle('hide'); }
+async function createCode(){
+  const btn=document.getElementById('dcBtn'); btn.disabled=true;
+  const type=document.getElementById('dcType').value;
+  const value=document.getElementById('dcValue').value;
+  const body={ code:document.getElementById('dcCode').value||undefined,
+    maxRedemptions:document.getElementById('dcMax').value||undefined,
+    durationMonths:document.getElementById('dcMonths').value||undefined };
+  if(type==='percent') body.percentOff=value; else body.amountOff=value;
+  try{ const r=await api('/api/admin/discounts',{method:'POST',body:JSON.stringify(body)}); toast('Created '+r.code.code); document.getElementById('dcCode').value='';document.getElementById('dcValue').value=''; loadDiscounts(); }
+  catch(e){ toast(e.message); } finally{ btn.disabled=false; }
+}
+async function deactivate(id){ try{ await api('/api/admin/discounts/deactivate',{method:'POST',body:JSON.stringify({id})}); toast('Deactivated'); loadDiscounts(); }catch(e){ toast(e.message); } }
+
+async function loadUsers(){
+  const el = document.getElementById('users');
+  try{
+    const { users } = await api('/api/admin/users');
+    document.getElementById('userCount').textContent = users.length + ' total';
+    if(!users.length){ el.innerHTML='<div class="muted">No users yet.</div>'; return; }
+    el.innerHTML = '<table><thead><tr><th>User</th><th>Plan</th><th>Status</th><th>Vault</th><th>Contacts</th><th>Actions</th></tr></thead><tbody>'
+      + users.map(u=>`<tr>
+          <td><b>${esc(u.name)}</b><br><span class="muted">${esc(u.email)}</span></td>
+          <td><span class="pill ${u.premium?(u.plan==='comp'?'comp':'premium'):'free'}">${esc(u.plan)}</span></td>
+          <td>${u.status==='past_due'?'<span class="pill past_due">past due</span>':esc(u.status)}${u.provider?' · '+esc(u.provider):''}</td>
+          <td>${esc(u.verification)}</td>
+          <td>${u.contacts}</td>
+          <td class="row">
+            ${u.plan==='comp'?`<button class="btn btn-ghost btn-sm" onclick="comp('${u.id}',0)">Remove comp</button>`:`<button class="btn btn-ghost btn-sm" onclick="comp('${u.id}',12)">Comp 1yr</button>`}
+          </td>
+        </tr>`).join('') + '</tbody></table>';
+  }catch(e){ el.innerHTML='<div class="banner warn">'+esc(e.message)+'</div>'; }
+}
+async function comp(userId, months){
+  try{ await api('/api/admin/comp',{method:'POST',body:JSON.stringify({userId,months})}); toast(months>0?'Comped 1 year':'Comp removed'); loadUsers(); loadMetrics(); }
+  catch(e){ toast(e.message); }
+}
+
+function renderAuthArea(){
+  const el=document.getElementById('authArea'); el.innerHTML='';
+  if(window.Clerk.user){ const d=document.createElement('div'); el.appendChild(d); window.Clerk.mountUserButton(d); }
+  else { const b=document.createElement('button'); b.className='btn btn-primary'; b.textContent='Sign in'; b.onclick=()=>window.Clerk.openSignIn({}); el.appendChild(b); }
+}
+function show(id){ ['gate','denied','content'].forEach(x=>document.getElementById(x).classList.toggle('hide', x!==id)); }
+
+(async () => {
+  if(!window.Clerk){ if(document.readyState!=='complete') await new Promise(r=>window.addEventListener('load',r,{once:true})); }
+  if(!window.Clerk){ document.getElementById('gate').classList.remove('hide'); return; }
+  await window.Clerk.load();
+  const boot = async () => {
+    renderAuthArea();
+    if(!window.Clerk.user){ show('gate'); return; }
+    try{
+      const { admin } = await api('/api/admin/whoami');
+      if(admin){ show('content'); loadAll(); } else { show('denied'); }
+    }catch(e){ show('denied'); }
+  };
+  window.Clerk.addListener(boot); boot();
+})();
+</script>
+</body>
+</html>

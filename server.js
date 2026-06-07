@@ -9,6 +9,7 @@ const { clerkMiddleware, getAuth, clerkClient } = require('@clerk/express');
 const crypto = require('crypto');
 const engine = require('./legacy-engine');
 const storage = require('./legacy-storage');
+const billing = require('./legacy-billing');
 
 // In-memory upload for media we forward to object storage (audio/video/photo)
 const mediaUpload = multer({
@@ -35,7 +36,8 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
 
-app.use(express.json({ limit: '10mb' }));
+// Capture the raw body so Stripe webhook signatures can be verified.
+app.use(express.json({ limit: '10mb', verify: (req, _res, buf) => { req.rawBody = buf; } }));
 
 // ─── SITE-WIDE PASSWORD GATE (pre-launch privacy) ────────────────────────
 // Challenges browser page loads with HTTP Basic Auth so the public can't see
@@ -141,6 +143,41 @@ function requireAuth(req, res, next) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   next();
+}
+
+// ─── ADMIN ACCESS (allow-listed emails) ──────────────────────────────────
+function adminEmails() {
+  return (process.env.ADMIN_EMAILS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+}
+async function isAdminUser(userId) {
+  if (!userId) return false;
+  const list = adminEmails();
+  if (!list.length) return false;
+  try {
+    const u = await clerkClient.users.getUser(userId);
+    return list.includes((u.emailAddresses?.[0]?.emailAddress || '').toLowerCase());
+  } catch {
+    return false;
+  }
+}
+async function requireAdmin(req, res, next) {
+  const { userId } = getAuth(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  if (!(await isAdminUser(userId))) return res.status(403).json({ error: 'Admin access required' });
+  next();
+}
+
+// ─── PREMIUM ENTITLEMENT (only enforced when BILLING_ENFORCE=true) ────────
+async function requirePremium(req, res, next) {
+  if (!billing.billingEnforced()) return next(); // gate is off → allow everyone
+  try {
+    const { userId } = getAuth(req);
+    const { meta } = await billing.getMeta(userId);
+    if (billing.entitlement(meta).premium) return next();
+    return res.status(402).json({ error: 'premium_required', message: 'Activating delivery requires a Premium plan.' });
+  } catch (err) {
+    return res.status(500).json({ error: 'Could not verify subscription' });
+  }
 }
 
 // ─── SERVE HTML WITH CLERK SCRIPT INJECTED ───────
@@ -431,7 +468,7 @@ app.get('/api/contacts', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/api/contacts', requireAuth, async (req, res) => {
+app.post('/api/contacts', requireAuth, requirePremium, async (req, res) => {
   const { userId } = getAuth(req);
   const { name, email, phone, relationship, role } = req.body || {};
   if (!name || !email || !email.includes('@')) {
@@ -860,6 +897,208 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
   }
 });
 
+// ════════════════════════════════════════════════════════════════════════
+// BILLING · SUBSCRIPTIONS · ADMIN
+// ════════════════════════════════════════════════════════════════════════
+
+// ─── Plans + this user's subscription/entitlement ────────────────────────
+app.get('/api/billing/plans', (req, res) => {
+  res.json({
+    plans: billing.publicPlans(),
+    stripe: billing.stripeConfigured(),
+    paypal: billing.paypalConfigured(),
+    enforced: billing.billingEnforced(),
+  });
+});
+
+app.get('/api/billing/status', requireAuth, async (req, res) => {
+  const { userId } = getAuth(req);
+  try {
+    const { meta } = await billing.getMeta(userId);
+    const ent = billing.entitlement(meta);
+    const sub = meta.subscription || {};
+    res.json({
+      entitlement: ent,
+      enforced: billing.billingEnforced(),
+      plan: ent.plan,
+      provider: sub.provider || null,
+      currentPeriodEnd: sub.currentPeriodEnd || null,
+      cancelAtPeriodEnd: !!sub.cancelAtPeriodEnd,
+      manageable: sub.provider === 'stripe' && billing.stripeConfigured(),
+    });
+  } catch (err) {
+    console.error('billing status:', err.message);
+    res.status(500).json({ error: 'Could not load subscription' });
+  }
+});
+
+// ─── Stripe Checkout + Billing Portal ────────────────────────────────────
+app.post('/api/billing/checkout', requireAuth, async (req, res) => {
+  const { userId } = getAuth(req);
+  const { planId, promoCode } = req.body || {};
+  try {
+    const user = await clerkClient.users.getUser(userId);
+    const { url } = await billing.createCheckout({ userId, user, planId, promoCode });
+    res.json({ url });
+  } catch (err) {
+    console.error('checkout:', err.message);
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/billing/portal', requireAuth, async (req, res) => {
+  const { userId } = getAuth(req);
+  try {
+    const user = await clerkClient.users.getUser(userId);
+    const { url } = await billing.createPortal({ userId, user });
+    res.json({ url });
+  } catch (err) {
+    console.error('portal:', err.message);
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ─── PayPal subscription ─────────────────────────────────────────────────
+app.post('/api/billing/paypal/subscribe', requireAuth, async (req, res) => {
+  const { userId } = getAuth(req);
+  const { planId } = req.body || {};
+  try {
+    const { url } = await billing.createPaypalSubscription({ userId, planId });
+    res.json({ url });
+  } catch (err) {
+    console.error('paypal subscribe:', err.message);
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ─── Webhooks (no auth; verified by signature / lookup) ──────────────────
+app.post('/api/webhooks/stripe', async (req, res) => {
+  try {
+    const event = billing.verifyStripeEvent(req.rawBody, req.headers['stripe-signature']);
+    const result = await billing.handleStripeEvent(event);
+    res.json({ received: true, ...result });
+  } catch (err) {
+    console.error('stripe webhook:', err.message);
+    res.status(400).json({ error: `Webhook error: ${err.message}` });
+  }
+});
+
+app.post('/api/webhooks/paypal', async (req, res) => {
+  try {
+    const result = await billing.handlePaypalWebhook(req.body || {});
+    res.json({ received: true, ...result });
+  } catch (err) {
+    console.error('paypal webhook:', err.message);
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ─── ADMIN: metrics, users/subscriptions, discounts, settings ────────────
+app.get('/api/admin/metrics', requireAdmin, async (req, res) => {
+  try {
+    let total = 0, paid = 0, comped = 0, pastDue = 0, mrrCents = 0;
+    const byPlan = {};
+    await engine.forEachUser(async (u) => {
+      total++;
+      const ent = billing.entitlement(u.privateMetadata || {});
+      const sub = (u.privateMetadata || {}).subscription || {};
+      byPlan[ent.plan] = (byPlan[ent.plan] || 0) + 1;
+      if (sub.status === 'past_due') pastDue++;
+      if (ent.source === 'comp') comped++;
+      if (ent.premium && ent.source !== 'comp') {
+        paid++;
+        const plan = billing.planById(ent.plan);
+        if (plan && plan.interval === 'month') mrrCents += plan.priceCents;
+        else if (plan && plan.interval === 'year') mrrCents += Math.round(plan.priceCents / 12);
+      }
+    });
+    res.json({ total, paid, comped, pastDue, free: total - paid - comped, byPlan, mrrCents, mrr: billing.formatPrice(mrrCents) });
+  } catch (err) {
+    console.error('admin metrics:', err.message);
+    res.status(500).json({ error: 'Could not compute metrics' });
+  }
+});
+
+app.get('/api/admin/users', requireAdmin, async (req, res) => {
+  try {
+    const rows = [];
+    await engine.forEachUser(async (u) => {
+      const meta = u.privateMetadata || {};
+      const ent = billing.entitlement(meta);
+      const sub = meta.subscription || {};
+      rows.push({
+        id: u.id,
+        name: [u.firstName, u.lastName].filter(Boolean).join(' ') || '—',
+        email: u.emailAddresses?.[0]?.emailAddress || '—',
+        plan: ent.plan, premium: ent.premium, status: sub.status || 'none',
+        provider: sub.provider || null,
+        verification: (meta.verification && meta.verification.status) || 'active',
+        contacts: (meta.trustedContacts || []).length,
+        createdAt: u.createdAt,
+      });
+    });
+    rows.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    res.json({ users: rows });
+  } catch (err) {
+    console.error('admin users:', err.message);
+    res.status(500).json({ error: 'Could not load users' });
+  }
+});
+
+// Comp / un-comp a user (grant or revoke premium manually)
+app.post('/api/admin/comp', requireAdmin, async (req, res) => {
+  const { userId, months } = req.body || {};
+  if (!userId) return res.status(400).json({ error: 'Missing userId' });
+  try {
+    const m = Number(months);
+    if (m > 0) {
+      const until = new Date(); until.setMonth(until.getMonth() + m);
+      await billing.setSubscription(userId, { compedUntil: until.toISOString(), compedAt: new Date().toISOString(), plan: 'comp' });
+      res.json({ ok: true, compedUntil: until.toISOString() });
+    } else {
+      await billing.setSubscription(userId, { compedUntil: null });
+      res.json({ ok: true, compedUntil: null });
+    }
+  } catch (err) {
+    console.error('admin comp:', err.message);
+    res.status(500).json({ error: 'Could not update comp' });
+  }
+});
+
+app.get('/api/admin/discounts', requireAdmin, async (req, res) => {
+  try {
+    res.json({ stripe: billing.stripeConfigured(), codes: await billing.listDiscountCodes() });
+  } catch (err) {
+    console.error('admin discounts:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/discounts', requireAdmin, async (req, res) => {
+  try {
+    const code = await billing.createDiscountCode(req.body || {});
+    res.json({ ok: true, code });
+  } catch (err) {
+    console.error('create discount:', err.message);
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/discounts/deactivate', requireAdmin, async (req, res) => {
+  try {
+    await billing.deactivateDiscountCode((req.body || {}).id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Whether the requesting user is an admin (drives the UI showing the admin link)
+app.get('/api/admin/whoami', requireAuth, async (req, res) => {
+  const { userId } = getAuth(req);
+  res.json({ admin: await isAdminUser(userId) });
+});
+
 // ─── CRON: the daily sweep (Vercel Cron hits this; secured by CRON_SECRET) ─
 app.get('/api/cron/sweep', async (req, res) => {
   const secret = process.env.CRON_SECRET;
@@ -901,6 +1140,7 @@ function servePage(file) {
 app.get('/executor', servePage('portal-executor.html'));
 app.get('/portal', servePage('portal-recipient.html'));
 app.get('/alive', servePage('portal-alive.html'));
+app.get('/admin', servePage('portal-admin.html'));
 
 // ─── STATIC ASSETS (only from public/ subdir) ────
 // Note: legacy_letter.html is served by the '/' route above

@@ -559,6 +559,40 @@ input,textarea,select{font-family:inherit;font-size:inherit;color:inherit;border
 .exec-row-btn{background:none;border:none;cursor:pointer;color:var(--ink-3);font-size:12px;font-weight:700;padding:4px 6px}
 .exec-row-btn:hover{color:var(--navy)}
 .exec-row-btn.del:hover{color:#dc2626}
+
+/* ── PLAN / BILLING CARD ── */
+.plan-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;margin-top:12px}
+.plan-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.plan-title{font-family:'Nunito';font-weight:900;font-size:13px;color:var(--navy)}
+.plan-badge{font-size:10px;font-weight:800;padding:3px 10px;border-radius:999px;background:#F1F5F9;color:#64748B;text-transform:uppercase;letter-spacing:.04em}
+.plan-badge.premium{background:#ECFDF5;color:#16a34a}
+.plan-sub{font-size:11px;color:var(--ink-3);line-height:1.45;margin:0 0 11px;font-weight:600}
+.plan-btn{width:100%;padding:9px;background:var(--navy);color:var(--yellow);border-radius:8px;font-weight:800;font-size:11px;letter-spacing:.04em;text-transform:uppercase;border:none;cursor:pointer}
+.plan-btn:hover{background:var(--navy-d)}
+.plan-admin-link{display:block;text-align:center;margin-top:8px;font-size:11px;font-weight:800;color:var(--ink-3);text-decoration:none}
+.plan-admin-link:hover{color:var(--navy)}
+
+/* ── PRICING MODAL ── */
+.pricing-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:18px}
+.price-plan{border:1.5px solid var(--line);border-radius:14px;padding:18px;display:flex;flex-direction:column;position:relative;background:#fff}
+.price-plan.featured{border-color:var(--navy);box-shadow:0 6px 24px rgba(10,42,74,.1)}
+.price-plan .pp-badge{position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:var(--yellow);color:var(--navy);font-size:9px;font-weight:900;padding:3px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}
+.price-plan .pp-name{font-family:'Nunito';font-weight:900;font-size:15px;color:var(--navy)}
+.price-plan .pp-price{font-family:'Nunito';font-weight:900;font-size:30px;color:var(--navy);margin:6px 0 2px}
+.price-plan .pp-price span{font-size:13px;color:var(--ink-3);font-weight:700}
+.price-plan .pp-blurb{font-size:12px;color:var(--ink-2);font-weight:600;line-height:1.45;margin:6px 0 12px;min-height:34px}
+.price-plan .pp-feats{list-style:none;padding:0;margin:0 0 16px;flex:1}
+.price-plan .pp-feats li{font-size:12px;color:var(--ink);padding:4px 0 4px 20px;position:relative;line-height:1.4}
+.price-plan .pp-feats li:before{content:'✓';position:absolute;left:0;color:#16a34a;font-weight:900}
+.price-plan .pp-buy{width:100%;padding:11px;border-radius:9px;font-weight:800;font-size:13px;border:none;cursor:pointer;font-family:inherit;background:var(--navy);color:var(--yellow)}
+.price-plan.featured .pp-buy{background:var(--yellow);color:var(--navy)}
+.price-plan .pp-buy:hover{filter:brightness(1.06)}
+.price-plan .pp-buy:disabled{opacity:.5;cursor:not-allowed}
+.price-plan .pp-paypal{width:100%;padding:8px;margin-top:7px;border-radius:9px;font-weight:800;font-size:12px;border:1px solid var(--line-2);cursor:pointer;font-family:inherit;background:#fff;color:#003087}
+.price-plan .pp-current{width:100%;padding:11px;text-align:center;font-size:12px;font-weight:800;color:#16a34a}
+.promo-row{display:flex;gap:8px;align-items:center;background:var(--bg);border-radius:10px;padding:12px 14px;font-size:12px}
+.promo-row input{flex:1;padding:8px 10px;border-radius:7px;border:1px solid var(--line-2);font-size:12px;font-weight:700;text-transform:uppercase;font-family:inherit}
+.promo-row .applied{color:#16a34a;font-weight:800}
 </style>
 </head>
 <body>
@@ -701,6 +735,17 @@ input,textarea,select{font-family:inherit;font-size:inherit;color:inherit;border
       <div id="execMiniList" class="exec-mini-list"></div>
       <button class="exec-manage-btn" onclick="openExecModal()">Manage trusted contacts</button>
       <button class="exec-manage-btn" style="background:#fff;border:1px solid var(--line-2);color:var(--navy);margin-top:6px" onclick="openDashboard()">📊 Estate dashboard</button>
+    </div>
+
+    <!-- PLAN / BILLING -->
+    <div class="plan-card" id="planCard" style="display:none">
+      <div class="plan-row">
+        <span class="plan-title">Your plan</span>
+        <span class="plan-badge" id="planBadge">Free</span>
+      </div>
+      <p class="plan-sub" id="planSub">Writing & storage are free. Upgrade to activate delivery to your people.</p>
+      <button class="plan-btn" id="planCta" onclick="openPricing()">View plans &amp; upgrade</button>
+      <a class="plan-admin-link" id="adminLink" href="/admin" target="_blank" style="display:none">⚙ Admin dashboard</a>
     </div>
   </aside>
 </div>
@@ -3906,6 +3951,8 @@ async function _initCloudFeatures() {
   if (dmsEl) dmsEl.style.display = 'block';
   if (sendEl) sendEl.style.display = 'block';
   if (execEl) { execEl.style.display = 'block'; loadExecContacts(); }
+  loadBillingStatus();
+  _handleBillingReturn();
 
   // Load cloud state (if newer than local)
   try {
@@ -3954,9 +4001,11 @@ function _cloudFeaturesHidden() {
   const dmsEl = document.getElementById('dmsWidget');
   const sendEl = document.getElementById('sendEmailCard');
   const execEl = document.getElementById('execCard');
+  const planEl = document.getElementById('planCard');
   if (dmsEl) dmsEl.style.display = 'none';
   if (sendEl) sendEl.style.display = 'none';
   if (execEl) execEl.style.display = 'none';
+  if (planEl) planEl.style.display = 'none';
 }
 
 function _scheduleCloudSave() {
@@ -4435,6 +4484,138 @@ async function removeExec(id, name) {
   } catch (e) { showToast('Could not remove'); }
 }
 
+// ─── BILLING / SUBSCRIPTIONS ─────────────────────
+let _billingStatus = null;
+let _plansCache = null;
+
+async function loadBillingStatus() {
+  try {
+    const token = await _getToken();
+    const r = await fetch('/api/billing/status', { headers: token ? { 'Authorization': 'Bearer ' + token } : {} });
+    if (!r.ok) return;
+    _billingStatus = await r.json();
+    _renderPlanCard();
+  } catch (e) { /* non-fatal */ }
+  // Admin link
+  try {
+    const token = await _getToken();
+    const r = await fetch('/api/admin/whoami', { headers: token ? { 'Authorization': 'Bearer ' + token } : {} });
+    if (r.ok) { const { admin } = await r.json(); const el = document.getElementById('adminLink'); if (el && admin) el.style.display = 'block'; }
+  } catch (e) {}
+}
+
+function _renderPlanCard() {
+  const card = document.getElementById('planCard');
+  if (!card || !_billingStatus) return;
+  card.style.display = 'block';
+  const ent = _billingStatus.entitlement || { premium: false, plan: 'free' };
+  const badge = document.getElementById('planBadge');
+  const sub = document.getElementById('planSub');
+  const cta = document.getElementById('planCta');
+  const planName = { free: 'Free', premium_monthly: 'Premium', premium_annual: 'Premium (Annual)', lifetime: 'Lifetime', comp: 'Premium (comped)' }[ent.plan] || ent.plan;
+  badge.textContent = planName;
+  badge.className = 'plan-badge' + (ent.premium ? ' premium' : '');
+  if (ent.premium) {
+    let until = _billingStatus.currentPeriodEnd ? ' · renews ' + new Date(_billingStatus.currentPeriodEnd).toLocaleDateString() : '';
+    if (_billingStatus.cancelAtPeriodEnd) until = _billingStatus.currentPeriodEnd ? ' · ends ' + new Date(_billingStatus.currentPeriodEnd).toLocaleDateString() : '';
+    sub.textContent = 'Your delivery features are active' + until + '.';
+    if (_billingStatus.manageable) { cta.textContent = 'Manage billing'; cta.onclick = openBillingPortal; }
+    else { cta.textContent = 'View plans'; cta.onclick = openPricing; }
+  } else {
+    sub.textContent = 'Writing & storage are free. Upgrade to activate delivery to your people.';
+    cta.textContent = 'View plans & upgrade';
+    cta.onclick = openPricing;
+  }
+}
+
+async function openPricing() {
+  const modal = document.getElementById('pricingModal');
+  if (modal) modal.classList.add('on');
+  const grid = document.getElementById('pricingGrid');
+  try {
+    if (!_plansCache) {
+      const r = await fetch('/api/billing/plans');
+      _plansCache = await r.json();
+    }
+    const curPlan = _billingStatus && _billingStatus.entitlement ? _billingStatus.entitlement.plan : 'free';
+    const isPremium = _billingStatus && _billingStatus.entitlement && _billingStatus.entitlement.premium;
+    grid.innerHTML = _plansCache.plans.map(p => {
+      const featured = p.badge === 'Most popular';
+      const isCurrent = p.id === curPlan || (p.id === 'free' && !isPremium);
+      const interval = p.interval && p.interval !== 'one_time' ? '<span>/' + p.interval + '</span>' : (p.interval === 'one_time' ? '<span> once</span>' : '');
+      let action;
+      if (isCurrent) action = '<div class="pp-current">✓ Your plan</div>';
+      else if (p.id === 'free') action = '';
+      else {
+        const stripeBtn = `<button class="pp-buy" onclick="doCheckout('${p.id}')" ${p.stripeReady ? '' : 'disabled title="Stripe price not configured"'}>Choose ${escapeHTML(p.name)}</button>`;
+        const paypalBtn = p.paypalReady ? `<button class="pp-paypal" onclick="doPaypal('${p.id}')">Pay with PayPal</button>` : '';
+        action = stripeBtn + paypalBtn;
+      }
+      return `<div class="price-plan ${featured ? 'featured' : ''}">
+        ${p.badge ? `<span class="pp-badge">${escapeHTML(p.badge)}</span>` : ''}
+        <div class="pp-name">${escapeHTML(p.name)}</div>
+        <div class="pp-price">${escapeHTML(p.price)}${interval}</div>
+        <div class="pp-blurb">${escapeHTML(p.blurb)}</div>
+        <ul class="pp-feats">${p.features.map(f => '<li>' + escapeHTML(f) + '</li>').join('')}</ul>
+        ${action}
+      </div>`;
+    }).join('');
+    if (!_plansCache.stripe && !_plansCache.paypal) {
+      grid.insertAdjacentHTML('afterend', '');
+    }
+  } catch (e) {
+    grid.innerHTML = '<div style="text-align:center;color:var(--ink-3);padding:20px">Could not load plans.</div>';
+  }
+}
+function closePricing() { const m = document.getElementById('pricingModal'); if (m) m.classList.remove('on'); }
+
+async function doCheckout(planId) {
+  const promo = (document.getElementById('promoInput').value || '').trim();
+  try {
+    const token = await _getToken();
+    const r = await fetch('/api/billing/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': 'Bearer ' + token } : {}) },
+      body: JSON.stringify({ planId, promoCode: promo || undefined })
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'Checkout failed');
+    if (j.url) window.location.href = j.url;
+  } catch (e) { showToast(e.message); }
+}
+
+async function doPaypal(planId) {
+  try {
+    const token = await _getToken();
+    const r = await fetch('/api/billing/paypal/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': 'Bearer ' + token } : {}) },
+      body: JSON.stringify({ planId })
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'PayPal failed');
+    if (j.url) window.location.href = j.url;
+  } catch (e) { showToast(e.message); }
+}
+
+async function openBillingPortal() {
+  try {
+    const token = await _getToken();
+    const r = await fetch('/api/billing/portal', { method: 'POST', headers: token ? { 'Authorization': 'Bearer ' + token } : {} });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'Could not open billing');
+    if (j.url) window.location.href = j.url;
+  } catch (e) { showToast(e.message); }
+}
+
+// Reflect Stripe/PayPal redirect outcomes
+function _handleBillingReturn() {
+  const params = new URLSearchParams(location.search);
+  const b = params.get('billing');
+  if (b === 'success') { showToast('🎉 Welcome to Premium — your delivery features are active'); history.replaceState({}, '', location.pathname); }
+  else if (b === 'cancelled') { showToast('Checkout cancelled — no charge made'); history.replaceState({}, '', location.pathname); }
+}
+
 // ─── ESTATE DASHBOARD ────────────────────────────
 function openDashboard() {
   const m = document.getElementById('dashModal');
@@ -4579,6 +4760,26 @@ renderChapterList = function() {
       </div>
       <div style="font-size:11px;font-weight:800;color:var(--ink-3);letter-spacing:.06em;text-transform:uppercase;margin:6px 0 10px">Your trusted contacts</div>
       <div id="execList"><div class="exec-empty">No trusted contacts yet.</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- PRICING MODAL -->
+<div class="modal-overlay" id="pricingModal" onclick="if(event.target===this)closePricing()">
+  <div class="modal-box" style="max-width:840px">
+    <div class="modal-header">
+      <h3>Choose your plan</h3>
+      <button class="modal-close" onclick="closePricing()">×</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--ink-2);line-height:1.5;margin:0 0 18px">Writing and storing your letter is always free. Premium activates the part that matters most — getting your words to your people, exactly when you intend.</p>
+      <div class="pricing-grid" id="pricingGrid"><div style="text-align:center;padding:30px"><span class="spin" style="display:inline-block;width:20px;height:20px;border:2px solid var(--line-2);border-top-color:var(--navy);border-radius:50%;animation:dashspin .7s linear infinite"></span></div></div>
+      <div class="promo-row">
+        <span>🎟</span>
+        <input id="promoInput" placeholder="Discount code (optional)">
+        <span id="promoMsg" class="muted"></span>
+      </div>
+      <p class="muted" style="font-size:11px;margin:14px 0 0">Payments are processed securely by Stripe and PayPal. Cancel anytime.</p>
     </div>
   </div>
 </div>
