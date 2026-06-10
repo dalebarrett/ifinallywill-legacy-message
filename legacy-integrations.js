@@ -130,10 +130,16 @@ function verifyMetricsRequest(timestamp, signature) {
   return verify(`${timestamp}.${METRICS_PATH}`, timestamp, signature);
 }
 
+// IFW → LL status check (drives the Ground Control tile). Signed over
+// `${ts}.${userRef}` (userRef = email), mirroring the grant scheme.
+function verifyUserRef(timestamp, userRef, signature) {
+  return verify(`${timestamp}.${String(userRef || '').toLowerCase()}`, timestamp, signature);
+}
+
 module.exports = {
   IFW_BASE, PRODUCT, METRICS_PATH,
   configured, sign, verify,
   verifyGrant, applyGrant,
   fetchEntitlement, ifwSaysPremium, persistGrantFromPull,
-  verifyMetricsRequest,
+  verifyMetricsRequest, verifyUserRef,
 };

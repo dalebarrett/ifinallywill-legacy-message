@@ -1138,6 +1138,27 @@ app.post('/api/ifw-grant', async (req, res) => {
   }
 });
 
+// IFW Ground Control: has this user entered data? (flips tile Visit→Active)
+// HMAC over `${timestamp}.${userRef}` (userRef = email). Same secret/scheme.
+app.get('/api/integrations/ifinallywill/status', async (req, res) => {
+  const timestamp = req.headers['x-ifw-timestamp'];
+  const signature = req.headers['x-ifw-signature'];
+  const userRef = req.query.userRef;
+  if (!userRef) return res.status(400).json({ error: 'Missing userRef' });
+  if (!ifw.verifyUserRef(timestamp, userRef, signature)) {
+    return res.status(401).json({ error: 'Invalid signature' });
+  }
+  try {
+    const resp = await clerkClient.users.getUserList({ emailAddress: [String(userRef).toLowerCase()], limit: 10 });
+    const users = Array.isArray(resp) ? resp : resp.data || [];
+    const hasData = users.some((u) => engine.hasLetterData(u.privateMetadata || {}));
+    res.json({ hasData });
+  } catch (err) {
+    console.error('ifw status:', err.message);
+    res.status(500).json({ error: 'Could not check status' });
+  }
+});
+
 // Signed metrics for IFW's unified owner dashboard.
 // HMAC over `${timestamp}.${path}` (path = /api/integrations/metrics).
 app.get('/api/integrations/metrics', async (req, res) => {

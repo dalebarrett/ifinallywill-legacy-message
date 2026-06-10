@@ -51,9 +51,11 @@
 </head>
 <body>
 <div class="top">
+  <a id="gcReturn" href="#" style="display:none;align-items:center;gap:5px;font-size:12px;font-weight:800;color:#0A2A4A;background:#F2F5F9;border:1px solid #CDD9E5;border-radius:8px;padding:7px 12px;text-decoration:none;margin-right:14px;white-space:nowrap">← Return to Ground Control</a>
   <div class="brand"><span class="tag">Executor</span> Legacy Message</div>
   <div id="authArea"></div>
 </div>
+<script>(function(){function ok(u){try{var x=new URL(u);return x.protocol==='https:'&&(x.hostname==='fivestarwills.ca'||x.hostname.endsWith('.fivestarwills.ca'));}catch(e){return false;}}try{var p=new URLSearchParams(location.search).get('return');if(p&&ok(p))sessionStorage.setItem('gcReturn',p);}catch(e){}var s=null;try{s=sessionStorage.getItem('gcReturn');}catch(e){}var el=document.getElementById('gcReturn');if(el&&s&&ok(s)){el.href=s;el.style.display='inline-flex';}})();</script>
 <div class="wrap">
   <div id="gate" class="gate hide">
     <h1>Executor &amp; Trusted Contact Portal</h1>

@@ -223,6 +223,24 @@ function ruleNeedsHuman(rule) {
   return k === 'life_event' || k === 'never_unless';
 }
 
+// Has this user entered any data yet? (drives IFW's Ground Control tile state)
+function hasLetterData(meta) {
+  const st = meta && meta.legacyLetterState;
+  if (st) {
+    const chapters = st.chapters || {};
+    for (const k of Object.keys(chapters)) {
+      if (k === 'people') continue;
+      if (chapters[k] && (chapters[k].text || '').trim()) return true;
+    }
+    const recips = (chapters.people && chapters.people.recipients) || {};
+    for (const id of Object.keys(recips)) if ((recips[id].text || '').trim()) return true;
+    if (st.sections && Object.values(st.sections).some((s) => s && Object.keys(s).length)) return true;
+    if (Array.isArray(st.recipients) && st.recipients.some((r) => r.email || r.phone)) return true;
+  }
+  if ((meta && meta.trustedContacts || []).length) return true;
+  return false;
+}
+
 // ─── Enumerate every message an owner has authored ────────────────────────
 // Returns [{ key, kind:'chapter'|'recipient', title, text, rule, toEmail, toName }]
 function enumerateMessages(state) {
@@ -486,6 +504,7 @@ module.exports = {
   computeDueDate,
   ruleNeedsHuman,
   enumerateMessages,
+  hasLetterData,
   forEachUser,
   findUsersByEmail,
   processSweep,
