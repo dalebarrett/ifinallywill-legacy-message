@@ -62,11 +62,11 @@ async function patchMeta(userId, patchFn) {
 }
 
 function displayName(user) {
-  if (!user) return 'A Legacy Message member';
+  if (!user) return 'A Legacy Message™ member';
   return (
     [user.firstName, user.lastName].filter(Boolean).join(' ') ||
     user.emailAddresses?.[0]?.emailAddress ||
-    'A Legacy Message member'
+    'A Legacy Message™ member'
   );
 }
 function primaryEmail(user) {
@@ -91,10 +91,10 @@ function shell(title, bodyInner) {
 <body style="margin:0;padding:32px 16px;background:#F2F5F9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,sans-serif">
 <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 4px 40px rgba(10,42,74,.12)">
 <div style="background:linear-gradient(135deg,#0A2A4A,#071E38);padding:34px 40px 28px;text-align:center">
-<span style="display:inline-block;background:rgba(245,180,0,.15);border:1px solid rgba(245,180,0,.4);border-radius:20px;padding:4px 14px;color:#F5B800;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase">Legacy Message</span>
+<span style="display:inline-block;background:rgba(245,180,0,.15);border:1px solid rgba(245,180,0,.4);border-radius:20px;padding:4px 14px;color:#F5B800;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase">Legacy Message™</span>
 </div>
 <div style="padding:34px 40px 30px">${bodyInner}</div>
-<div style="background:#F2F5F9;padding:18px 40px;text-align:center;border-top:1px solid #E2EBF0"><p style="font-size:11px;color:#8098A8;margin:0;line-height:1.6">Legacy Message · iFinallyWill.com</p></div>
+<div style="background:#F2F5F9;padding:18px 40px;text-align:center;border-top:1px solid #E2EBF0"><p style="font-size:11px;color:#8098A8;margin:0;line-height:1.6">Legacy Message™ · iFinallyWill.com</p></div>
 </div></body></html>`;
 }
 function btn(href, label) {
@@ -110,7 +110,7 @@ function inviteEmail({ ownerName, contactName, role, acceptUrl }) {
   return shell('You have been named a trusted contact', `
     <h1 style="font-size:22px;color:#0A2A4A;margin:0 0 14px">${esc(ownerName)} has named you their ${esc(roleWord)}</h1>
     <p style="font-size:14px;color:#5A6E80;line-height:1.6;margin:0 0 10px">Hi ${esc(contactName)},</p>
-    <p style="font-size:14px;color:#5A6E80;line-height:1.6;margin:0 0 22px">${esc(ownerName)} has prepared personal messages for their loved ones on Legacy Message, and has asked you to help make sure those messages reach the right people at the right time. ${role === 'executor' ? 'As their executor, one day you may be the person who confirms their passing so their words can be delivered.' : 'You may one day be asked to help confirm their passing.'} There is nothing you need to do today — just confirm your role.</p>
+    <p style="font-size:14px;color:#5A6E80;line-height:1.6;margin:0 0 22px">${esc(ownerName)} has prepared personal messages for their loved ones on Legacy Message™, and has asked you to help make sure those messages reach the right people at the right time. ${role === 'executor' ? 'As their executor, one day you may be the person who confirms their passing so their words can be delivered.' : 'You may one day be asked to help confirm their passing.'} There is nothing you need to do today — just confirm your role.</p>
     <p style="text-align:center;margin:0 0 22px">${btn(acceptUrl, 'Accept this role')}</p>
     <p style="font-size:12px;color:#8098A8;line-height:1.6;margin:0">You will not see any of their private messages while they are alive. We may occasionally remind you that you hold this role and ask you to keep your contact details current.</p>`);
 }
@@ -118,7 +118,7 @@ function deathReportedToOwnerEmail({ ownerName, reporterName, cancelUrl, graceDa
   return shell('Important: your account was reported', `
     <h1 style="font-size:22px;color:#B91C1C;margin:0 0 14px">Are you still with us?</h1>
     <p style="font-size:14px;color:#5A6E80;line-height:1.6;margin:0 0 10px">Hi ${esc(ownerName)},</p>
-    <p style="font-size:14px;color:#5A6E80;line-height:1.6;margin:0 0 22px"><strong>${esc(reporterName)}</strong> has reported that you have passed away, which would begin the process of delivering your Legacy Messages. <strong>If this is a mistake — if you are reading this — please tap the button below within ${graceDays} days to stop it.</strong> Nothing will be sent while this window is open.</p>
+    <p style="font-size:14px;color:#5A6E80;line-height:1.6;margin:0 0 22px"><strong>${esc(reporterName)}</strong> has reported that you have passed away, which would begin the process of delivering your Legacy Messages™. <strong>If this is a mistake — if you are reading this — please tap the button below within ${graceDays} days to stop it.</strong> Nothing will be sent while this window is open.</p>
     <p style="text-align:center;margin:0 0 22px">${btn(cancelUrl, "I'm still here — cancel this")}</p>
     <p style="font-size:12px;color:#8098A8;line-height:1.6;margin:0">If you do nothing and your trusted contacts confirm, your messages will begin to be delivered as you scheduled them. If you no longer want this person as a contact, sign in and remove them.</p>`);
 }
@@ -134,7 +134,7 @@ function messageReleasedEmail({ ownerName, recipientName, portalUrl, preview }) 
   return shell(`A message from ${ownerName}`, `
     <h1 style="font-size:22px;color:#0A2A4A;margin:0 0 14px">${esc(ownerName)} left you a message</h1>
     <p style="font-size:14px;color:#5A6E80;line-height:1.6;margin:0 0 18px">Hi ${esc(recipientName || 'there')},</p>
-    <p style="font-size:14px;color:#5A6E80;line-height:1.6;margin:0 0 18px">${esc(ownerName)} prepared a personal message for you, to be delivered at this moment. It is waiting safely for you in your private Legacy Message space.</p>
+    <p style="font-size:14px;color:#5A6E80;line-height:1.6;margin:0 0 18px">${esc(ownerName)} prepared a personal message for you, to be delivered at this moment. It is waiting safely for you in your private Legacy Message™ space.</p>
     ${preview ? `<blockquote style="border-left:3px solid #F5B800;padding-left:14px;margin:0 0 22px;font-style:italic;color:#5A6E80;font-size:14px;line-height:1.6">"${esc(preview)}…"</blockquote>` : ''}
     <p style="text-align:center;margin:0 0 22px">${btn(portalUrl, 'Read your message')}</p>
     <p style="font-size:12px;color:#8098A8;line-height:1.6;margin:0">For your privacy, you may be asked to verify your identity before viewing.</p>`);
@@ -181,14 +181,14 @@ function pushAudit(meta, action, actor, detail) {
 function dmsOwnerEmail({ ownerName, days, url }) {
   return shell('A gentle check-in', `
     <h1 style="font-size:22px;color:#0A2A4A;margin:0 0 14px">Just checking you're okay</h1>
-    <p style="font-size:14px;color:#5A6E80;line-height:1.6;margin:0 0 22px">Hi ${esc(ownerName)}, it's been about ${days} days since you last checked in on Legacy Message. No alarm — we just quietly keep watch so your messages are only ever delivered at the right time. Please open the app and tap "Check in" so we know all is well.</p>
+    <p style="font-size:14px;color:#5A6E80;line-height:1.6;margin:0 0 22px">Hi ${esc(ownerName)}, it's been about ${days} days since you last checked in on Legacy Message™. No alarm — we just quietly keep watch so your messages are only ever delivered at the right time. Please open the app and tap "Check in" so we know all is well.</p>
     <p style="text-align:center;margin:0 0 8px">${btn(url, 'Check in now')}</p>`);
 }
 function dmsExecutorEmail({ ownerName, contactName, days, portalUrl }) {
   return shell('Please check on someone', `
     <h1 style="font-size:22px;color:#0A2A4A;margin:0 0 14px">A quiet heads-up</h1>
     <p style="font-size:14px;color:#5A6E80;line-height:1.6;margin:0 0 10px">Hi ${esc(contactName)},</p>
-    <p style="font-size:14px;color:#5A6E80;line-height:1.6;margin:0 0 22px"><strong>${esc(ownerName)}</strong> named you a trusted contact on Legacy Message and hasn't checked in for about ${days} days. This is just a backstop reminder — it does <strong>not</strong> mean anything has happened. If you're able, please check in on them. If something has happened, you can begin the confirmation process in your portal.</p>
+    <p style="font-size:14px;color:#5A6E80;line-height:1.6;margin:0 0 22px"><strong>${esc(ownerName)}</strong> named you a trusted contact on Legacy Message™ and hasn't checked in for about ${days} days. This is just a backstop reminder — it does <strong>not</strong> mean anything has happened. If you're able, please check in on them. If something has happened, you can begin the confirmation process in your portal.</p>
     <p style="text-align:center;margin:0 0 8px">${btn(portalUrl, 'Open executor portal')}</p>`);
 }
 
@@ -352,7 +352,7 @@ async function processDms(user, meta, now, summary) {
   } else if (days >= REMIND) {
     if (!esc.lastOwnerNudge || now - new Date(esc.lastOwnerNudge).getTime() > REPEAT) {
       const email = primaryEmail(user);
-      if (email) { try { await sendEmail({ to: email, subject: 'A gentle check-in from Legacy Message', html: dmsOwnerEmail({ ownerName: displayName(user), days, url: APP_URL }) }); } catch (e) { summary.errors.push(`dms-owner-email: ${e.message}`); } }
+      if (email) { try { await sendEmail({ to: email, subject: 'A gentle check-in from Legacy Message™', html: dmsOwnerEmail({ ownerName: displayName(user), days, url: APP_URL }) }); } catch (e) { summary.errors.push(`dms-owner-email: ${e.message}`); } }
       const ph = ownerPhone(user);
       if (ph) { try { await sendSMS({ to: ph, body: `A gentle check-in from Legacy Message — please open the app to confirm you're here: ${APP_URL}` }); } catch (e) { summary.errors.push(`dms-owner-sms: ${e.message}`); } }
       esc.lastOwnerNudge = new Date(now).toISOString();

@@ -437,7 +437,7 @@ function buildLegacyLetterEmail({ senderName, recipientName, chapters }) {
   <div style="max-width:580px;margin:0 auto;background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 4px 40px rgba(10,42,74,.13)">
     <div style="background:linear-gradient(135deg,#0A2A4A 0%,#071E38 100%);padding:42px 48px 36px;text-align:center">
       <div style="display:inline-block;background:rgba(245,180,0,.15);border:1px solid rgba(245,180,0,.4);border-radius:20px;padding:4px 14px;margin-bottom:16px">
-        <span style="color:#F5B800;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase">Legacy Message</span>
+        <span style="color:#F5B800;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase">Legacy Message™</span>
       </div>
       <h1 style="color:#fff;font-size:26px;font-weight:900;margin:0 0 10px;line-height:1.3">A message from<br>${name}</h1>
       <p style="color:rgba(255,255,255,.6);font-size:13px;margin:0">Written with love, for ${recipient}</p>
@@ -450,7 +450,7 @@ function buildLegacyLetterEmail({ senderName, recipientName, chapters }) {
     </div>
     <div style="background:#F2F5F9;padding:22px 48px;text-align:center;border-top:1px solid #E2EBF0">
       <p style="font-size:11px;color:#8098A8;margin:0;line-height:1.7">
-        Delivered by <strong style="color:#0A2A4A">Legacy Message</strong> · iFinallyWill.com<br>
+        Delivered by <strong style="color:#0A2A4A">Legacy Message™</strong> · iFinallyWill.com<br>
         This message was written and sealed by ${name}.
       </p>
     </div>
