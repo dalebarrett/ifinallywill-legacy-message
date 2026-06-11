@@ -50,7 +50,7 @@ const SITE_USER = process.env.SITE_BASIC_USER;
 const SITE_PASS = process.env.SITE_BASIC_PASS;
 if (SITE_USER && SITE_PASS) {
   app.use((req, res, next) => {
-    if (req.path.startsWith('/api/')) return next(); // Clerk/cron-secured
+    if (req.path.startsWith('/api/') || req.path === '/i18n.js') return next(); // Clerk/cron-secured + public i18n bundle
     const hdr = req.headers.authorization || '';
     if (hdr.startsWith('Basic ')) {
       let decoded = '';
@@ -212,7 +212,20 @@ app.get('/', (req, res) => {
     }
   }
   html = html.replace('</head>', `${tag}\n</head>`);
+  html = html.replace('<head>', '<head>\n<script src="/i18n.js"></script>');
   res.type('html').send(html);
+});
+
+// ─── i18n bundle (dictionary + translator) ───────
+app.get('/i18n.js', (req, res) => {
+  try {
+    const js = fs.readFileSync(path.join(__dirname, 'i18n.js'), 'utf8');
+    res.type('application/javascript');
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.send(js);
+  } catch {
+    res.type('application/javascript').send('/* i18n bundle not built */');
+  }
 });
 
 // ─── AI SUGGESTIONS (auth required) ─────────────
@@ -1263,6 +1276,7 @@ function servePage(file) {
           html = html.replace('</head>', `${tag}\n</head>`);
         } catch {}
       }
+      html = html.replace('<head>', '<head>\n<script src="/i18n.js"></script>');
       res.type('html').send(html);
     } catch (err) {
       res.status(500).send('Page not found');
