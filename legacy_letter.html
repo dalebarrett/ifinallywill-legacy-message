@@ -1105,7 +1105,6 @@ function loadState(){
   s.sections = s.sections || {};
   s.recipients = s.recipients || DEFAULT_RECIPIENTS.slice();
   s.living = s.living || {birthday:true, child:false, purchase:false, marriage:false, policy:true, health:false};
-  s.affinaTotal = s.affinaTotal || 0;
   s.invitedCount = s.invitedCount || 0;
   s.welcomeSeen = s.welcomeSeen || false;
   return s;
@@ -2294,7 +2293,6 @@ function restartLetter(){
     sections: {},
     recipients: DEFAULT_RECIPIENTS.slice(),
     living: {birthday:true, child:false, purchase:false, marriage:false, policy:true, health:false},
-    affinaTotal: 0,
     invitedCount: 0,
     welcomeSeen: false
   };
@@ -3749,7 +3747,7 @@ restartLetter = async function(){
     chapters: {}, sections: {},
     recipients: DEFAULT_RECIPIENTS.slice(),
     living: {birthday:true, child:false, purchase:false, marriage:false, policy:true, health:false},
-    affinaTotal: 0, invitedCount: 0, welcomeSeen: false
+    invitedCount: 0, welcomeSeen: false
   };
   currentChapter = 0; currentSection = 0; currentView = 'chapter';
 
