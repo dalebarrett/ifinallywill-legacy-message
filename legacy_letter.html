@@ -459,8 +459,10 @@ input,textarea,select{font-family:inherit;font-size:inherit;color:inherit;border
 .modal-box{background:#fff;border-radius:18px;max-width:620px;width:92%;max-height:88vh;overflow-y:auto;box-shadow:0 24px 80px rgba(10,42,74,.28);display:flex;flex-direction:column}
 .modal-header{padding:22px 26px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
 .modal-header h3{margin:0;font-size:17px;color:var(--navy);font-family:'Nunito',sans-serif;font-weight:900}
-.modal-close{background:none;border:none;font-size:22px;cursor:pointer;color:var(--ink-3);line-height:1;padding:0 4px;transition:color .15s}
-.modal-close:hover{color:var(--navy)}
+/* Close (×) inside a .modal-header: override the absolute-positioned .modal-close
+   rule used by the older .modal-bg dialogs so it sits visibly in the header. */
+.modal-header .modal-close{position:static;width:36px;height:36px;flex-shrink:0;border-radius:50%;background:var(--bg);border:none;font-size:22px;cursor:pointer;color:var(--ink-3);line-height:1;display:flex;align-items:center;justify-content:center;padding:0;transition:all .15s}
+.modal-header .modal-close:hover{background:var(--line);color:var(--navy)}
 .modal-body{padding:22px 26px;flex:1}
 .email-from-line{font-size:12px;color:var(--ink-3);font-weight:700;margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--line)}
 .email-chapter-preview{margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid var(--line)}
@@ -1479,8 +1481,8 @@ function editRecipient(rid){
   ).join('');
 
   main.innerHTML =
-    '<div class="crumb"><b>Chapter 5 · For ' + escapeHtml(r.name) + '</b></div>'
-    + '<h2>Your message for ' + escapeHtml(r.name) + '</h2>'
+    '<div class="crumb"><b>Chapter 5 · For <span id="recipCrumbName">' + escapeHtml(r.name) + '</span></b></div>'
+    + '<h2>Your message for <span id="recipHeadingName">' + escapeHtml(r.name) + '</span></h2>'
     + '<div class="prompt">Keep it short — under 90 seconds spoken. The most powerful messages are one specific memory plus one specific wish for them. Add a detail only the two of you would know.</div>'
 
     + '<div class="rec-card">'
@@ -1537,6 +1539,9 @@ function editRecipient(rid){
 function updateRecipName(rid, val){
   const r = state.recipients.find(x=>x.id===rid);
   if (r) { r.name = val; r.initial = (val.charAt(0)||'?').toUpperCase(); }
+  // Live-update the editor heading/crumb so it reflects the typed name immediately.
+  const hn = document.getElementById('recipHeadingName'); if (hn) hn.textContent = val || '…';
+  const cn = document.getElementById('recipCrumbName'); if (cn) cn.textContent = val || '…';
   saveState(); renderChapterList();
 }
 function updateRecipEmail(rid, val){
@@ -1925,7 +1930,15 @@ function saveAndRender(){
   saveState();
   renderMain();
   renderChapterList();
-  document.querySelector('.main').scrollTop = 0;
+  // Bring the newly-selected chapter/section into view. Reset every plausible
+  // scroller (the .main pane, the window, and the document element) so switching
+  // chapters never leaves the user staring at a mid-scroll "nothing happened" view.
+  const mainPane = document.querySelector('.main');
+  if (mainPane) mainPane.scrollTop = 0;
+  try { window.scrollTo({ top: 0, behavior: 'auto' }); } catch (e) { window.scrollTo(0, 0); }
+  if (document.scrollingElement) document.scrollingElement.scrollTop = 0;
+  const heading = document.querySelector('#main-content .crumb, #main-content h2');
+  if (heading && heading.scrollIntoView) heading.scrollIntoView({ block: 'nearest' });
 }
 
 // ─── MODALS ──────────────────────────────────────
@@ -1939,10 +1952,16 @@ function openModal(name){
 function closeModal(){
   document.querySelectorAll('.modal-bg').forEach(el => el.classList.remove('on'));
 }
+// Close every kind of popup — the older .modal-bg dialogs AND the newer
+// .modal-overlay ones (pricing/email/executors/dashboard). Used by Escape.
+function closeAllModals(){
+  document.querySelectorAll('.modal-bg').forEach(el => el.classList.remove('on'));
+  document.querySelectorAll('.modal-overlay.on').forEach(el => el.classList.remove('on'));
+}
 document.addEventListener('click', e => {
   if (e.target.classList.contains('modal-bg')) closeModal();
 });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeAllModals(); });
 
 function buildImpact(){
   const tl = document.getElementById('impactTimeline');

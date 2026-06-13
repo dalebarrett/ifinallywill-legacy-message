@@ -235,6 +235,31 @@ test('delivery selector reveals date / life-event / conditions inputs', async ({
   expect(await page.evaluate(() => !!document.getElementById('delivConds'))).toBe(true);
 });
 
+// ─── Modals have a visible close affordance (Jordan QA: missing X) ─────────
+test('overlay modals show a visible close X and Escape closes them', async ({ page }) => {
+  await mockClerk(page, true);
+  await page.goto('/');
+  await page.waitForTimeout(900);
+  for (const open of ['openExecModal', 'openDashboard', 'openPricing']) {
+    await page.evaluate((fn) => window[fn](), open);
+    await page.waitForTimeout(400);
+    const overlay = await page.evaluate(() => {
+      const ov = document.querySelector('.modal-overlay.on');
+      if (!ov) return null;
+      const x = ov.querySelector('.modal-close');
+      if (!x) return { hasX: false };
+      const r = x.getBoundingClientRect();
+      const box = ov.querySelector('.modal-box').getBoundingClientRect();
+      return { hasX: r.width > 8 && r.height > 8, insideBox: r.top >= box.top - 2 && r.right <= box.right + 2 };
+    });
+    expect(overlay && overlay.hasX, `${open} close X visible`).toBe(true);
+    expect(overlay.insideBox, `${open} close X inside modal`).toBe(true);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(250);
+    expect(await page.evaluate(() => !!document.querySelector('.modal-overlay.on')), `${open} closed by Escape`).toBe(false);
+  }
+});
+
 // ─── Pricing modal ─────────────────────────────────────────────────────────
 test('pricing modal renders all four plans', async ({ page }) => {
   await mockClerk(page, true);
