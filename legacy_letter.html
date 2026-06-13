@@ -3959,6 +3959,50 @@ async function _getToken() {
   try { return await window.Clerk?.session?.getToken() || null; } catch { return null; }
 }
 
+// ── Anonymous-draft → account migration helpers ──
+// Does a state object hold any real letter content?
+function _letterHasContent(s) {
+  if (!s) return false;
+  const ch = s.chapters || {};
+  for (const k of Object.keys(ch)) {
+    if (k === 'people') {
+      const r = (ch.people && ch.people.recipients) || {};
+      for (const id in r) if ((r[id].text || '').trim()) return true;
+    } else if ((ch[k] && ch[k].text || '').trim()) return true;
+  }
+  const secs = s.sections || {};
+  for (const id in secs) if (secs[id] && Object.keys(secs[id]).length) return true;
+  return false;
+}
+// Compare only the content-bearing parts (ignores nav/timestamps/flags).
+function _letterSlice(s) {
+  return JSON.stringify({ chapters: s.chapters || {}, sections: s.sections || {}, recipients: (s.recipients || []).map(r => ({ name: r.name, relation: r.relation, email: r.email })) });
+}
+function _sameLetter(a, b) { return _letterSlice(a) === _letterSlice(b); }
+
+// When a device draft AND an account letter both exist and differ, ask — never
+// silently overwrite. Resolves 'local' (keep device) or 'cloud' (keep account).
+function _draftConflictChoice(name) {
+  return new Promise(resolve => {
+    const ov = document.createElement('div');
+    ov.className = 'modal-overlay on';
+    ov.setAttribute('data-no-i18n', '');
+    ov.innerHTML = `<div class="modal-box" style="max-width:470px">
+      <div class="modal-header"><h3>You have two letters</h3></div>
+      <div class="modal-body">
+        <p style="font-size:14px;color:var(--ink-2);line-height:1.6;margin:0 0 16px">You started a letter on this device, and your account already has a different one. We won't overwrite either without asking — which would you like to keep?</p>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <button class="btn-send-now" id="_mcLocal" style="width:100%;padding:12px">Keep the letter I wrote on this device</button>
+          <button class="btn-modal-cancel" id="_mcCloud" style="width:100%;padding:12px">Keep my account's saved letter${name ? ' (' + name + ')' : ''}</button>
+        </div>
+        <p style="font-size:11px;color:var(--ink-3);margin:14px 0 0">Whatever you keep is saved to your account. The other is replaced — so choose carefully.</p>
+      </div></div>`;
+    document.body.appendChild(ov);
+    ov.querySelector('#_mcLocal').onclick = () => { ov.remove(); resolve('local'); };
+    ov.querySelector('#_mcCloud').onclick = () => { ov.remove(); resolve('cloud'); };
+  });
+}
+
 async function _initCloudFeatures() {
   if (_cloudInitDone) return;
   _cloudInitDone = true;
@@ -3973,29 +4017,51 @@ async function _initCloudFeatures() {
   loadBillingStatus();
   _handleBillingReturn();
 
-  // Load cloud state (if newer than local)
+  // ── Reconcile this device's draft with the account (no silent data loss) ──
   try {
     const token = await _getToken();
     if (!token) return;
+    const name = window.Clerk?.user?.firstName || '';
     const resp = await fetch('/api/state/load', { headers: { 'Authorization': 'Bearer ' + token } });
     if (resp.ok) {
-      const { state: cloudState, savedAt } = await resp.json();
-      if (cloudState && savedAt) {
-        const localTs = state._savedAt || 0;
-        const cloudTs = new Date(savedAt).getTime();
-        if (cloudTs > localTs) {
-          // Merge: keep cloud state but add welcoming message
-          const name = window.Clerk?.user?.firstName;
-          Object.assign(state, cloudState);
-          if (!state.welcomeSeen) state.welcomeSeen = true;
-          saveState();
-          renderChapterList();
-          renderMain();
-          if (name) showToast('✓ Loaded your saved letter, ' + name);
-        }
+      const { state: cloudState } = await resp.json();
+      const localHas = _letterHasContent(state);
+      const cloudHas = cloudState && _letterHasContent(cloudState);
+
+      let decision; // 'use_cloud' | 'keep_local' | 'noop'
+      if (cloudHas && localHas) {
+        decision = _sameLetter(state, cloudState) ? 'use_cloud'
+          : ((await _draftConflictChoice(name)) === 'cloud' ? 'use_cloud' : 'keep_local');
+      } else if (cloudHas) decision = 'use_cloud';
+      else if (localHas) decision = 'keep_local';
+      else decision = 'noop';
+
+      if (decision === 'use_cloud') {
+        // Adopt the account copy. Assigning replaces the content keys
+        // (chapters/sections/recipients) wholesale while preserving local
+        // defaults (living, etc.) for any key the cloud copy omits.
+        Object.assign(state, cloudState);
+        state.welcomeSeen = true;
+        state.chapters = state.chapters || {};
+        state.sections = state.sections || {};
+        state.recipients = state.recipients || DEFAULT_RECIPIENTS.slice();
+        currentChapter = state.currentChapter || 0;
+        currentSection = state.currentSection || 0;
+        currentView = state.currentView || 'chapter';
+        saveState();
+        renderChapterList();
+        renderMain();
+        showToast(name ? ('✓ Loaded your letter, ' + name) : '✓ Loaded your account letter');
+      } else if (decision === 'keep_local') {
+        // Migrate this device's draft UP into the account.
+        state.welcomeSeen = true;
+        saveState();
+        _doCloudSave();
+        showToast(cloudHas ? '✓ Keeping this device’s letter — saved to your account'
+                           : '✓ Your draft is now saved to your account');
       }
     }
-  } catch (e) { /* non-fatal */ }
+  } catch (e) { /* non-fatal — local draft remains intact */ }
 
   // Wire auto-save to cloud
   const _origSave = saveState;

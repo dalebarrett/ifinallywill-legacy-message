@@ -245,6 +245,43 @@ test('pricing modal renders all four plans', async ({ page }) => {
   expect(await page.evaluate(() => document.querySelectorAll('#pricingGrid .price-plan').length)).toBe(4);
 });
 
+// ─── Anonymous draft → account migration (no silent data loss) ─────────────
+test.describe('draft migration', () => {
+  const KEY = 'ifw_legacy_letter_v2';
+  async function run(page, { localDraft, cloudState }) {
+    await page.route('**/clerk.browser.js', (r) => r.abort());
+    let saved = null;
+    await page.route('**/api/state/load', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ state: cloudState, savedAt: cloudState ? new Date().toISOString() : null }) }));
+    await page.route('**/api/state/save', (r) => { try { saved = JSON.parse(r.request().postData()).state; } catch (e) {} return r.fulfill({ status: 200, body: '{"ok":true}' }); });
+    for (const p of ['**/api/billing/status', '**/api/admin/whoami', '**/api/checkin', '**/api/contacts']) {
+      await page.route(p, (r) => r.fulfill({ status: 200, body: '{}' }));
+    }
+    await page.addInitScript(([k, d]) => {
+      if (d) localStorage.setItem(k, JSON.stringify(d));
+      window.Clerk = { user: { firstName: 'Alex', emailAddresses: [{ emailAddress: 'alex@example.com' }] }, session: { getToken: async () => 't' }, load: async () => {}, addListener: () => {}, mountUserButton: (e) => { e.textContent = 'U'; }, openSignIn: () => {}, openSignUp: () => {} };
+    }, [KEY, localDraft]);
+    await page.goto('/');
+    await page.waitForTimeout(1400);
+    return () => saved;
+  }
+
+  test('cloud empty + device draft → keeps draft and migrates it up', async ({ page }) => {
+    const getSaved = await run(page, { localDraft: { chapters: { know: { text: 'My device draft.' } } }, cloudState: null });
+    const text = await page.evaluate(() => (state.chapters.know || {}).text || '');
+    expect(text).toBe('My device draft.');
+    expect(getSaved()).toBeTruthy(); // pushed to account
+  });
+
+  test('conflict → keeping the device letter never loses it', async ({ page }) => {
+    const getSaved = await run(page, { localDraft: { chapters: { know: { text: 'DEVICE text.' } } }, cloudState: { chapters: { know: { text: 'ACCOUNT text.' } } } });
+    expect(await page.$('#_mcLocal')).toBeTruthy(); // conflict modal shown, not silent
+    await page.click('#_mcLocal');
+    await page.waitForTimeout(500);
+    expect(await page.evaluate(() => (state.chapters.know || {}).text)).toBe('DEVICE text.');
+    expect(getSaved()).toBeTruthy();
+  });
+});
+
 // ─── Ground Control return link ────────────────────────────────────────────
 test.describe('GC return link', () => {
   test('valid fivestarwills return shows the link', async ({ page }) => {
