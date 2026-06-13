@@ -295,7 +295,7 @@ async function createPaypalSubscription({ userId, planId }) {
     body: JSON.stringify({
       plan_id: ppPlan,
       custom_id: userId,
-      application_context: { brand_name: 'Legacy Message™', return_url: `${APP_URL}/?billing=success`, cancel_url: `${APP_URL}/?billing=cancelled` },
+      application_context: { brand_name: 'Legacy Letter™', return_url: `${APP_URL}/?billing=success`, cancel_url: `${APP_URL}/?billing=cancelled` },
     }),
   });
   const data = await r.json();

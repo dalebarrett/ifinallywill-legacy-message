@@ -12,7 +12,7 @@ const crypto = require('crypto');
 const { clerkClient } = require('@clerk/express');
 
 const APP_URL = (process.env.APP_URL || 'https://legacy-message.vercel.app').replace(/\/$/, '');
-const FROM = `Legacy Message <noreply@${process.env.EMAIL_FROM_DOMAIN || 'ifinallywill.com'}>`;
+const FROM = `Legacy Letter <noreply@${process.env.EMAIL_FROM_DOMAIN || 'ifinallywill.com'}>`;
 const SIGNING_SECRET =
   process.env.TOKEN_SIGNING_SECRET || process.env.CLERK_SECRET_KEY || 'dev-insecure-signing-secret';
 
@@ -62,11 +62,11 @@ async function patchMeta(userId, patchFn) {
 }
 
 function displayName(user) {
-  if (!user) return 'A Legacy Message™ member';
+  if (!user) return 'A Legacy Letter™ member';
   return (
     [user.firstName, user.lastName].filter(Boolean).join(' ') ||
     user.emailAddresses?.[0]?.emailAddress ||
-    'A Legacy Message™ member'
+    'A Legacy Letter™ member'
   );
 }
 function primaryEmail(user) {
@@ -91,10 +91,10 @@ function shell(title, bodyInner) {
 <body style="margin:0;padding:32px 16px;background:#F2F5F9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,sans-serif">
 <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 4px 40px rgba(10,42,74,.12)">
 <div style="background:linear-gradient(135deg,#0A2A4A,#071E38);padding:34px 40px 28px;text-align:center">
-<span style="display:inline-block;background:rgba(245,180,0,.15);border:1px solid rgba(245,180,0,.4);border-radius:20px;padding:4px 14px;color:#F5B800;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase">Legacy Message™</span>
+<span style="display:inline-block;background:rgba(245,180,0,.15);border:1px solid rgba(245,180,0,.4);border-radius:20px;padding:4px 14px;color:#F5B800;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase">Legacy Letter™</span>
 </div>
 <div style="padding:34px 40px 30px">${bodyInner}</div>
-<div style="background:#F2F5F9;padding:18px 40px;text-align:center;border-top:1px solid #E2EBF0"><p style="font-size:11px;color:#8098A8;margin:0;line-height:1.6">Legacy Message™ · iFinallyWill.com</p></div>
+<div style="background:#F2F5F9;padding:18px 40px;text-align:center;border-top:1px solid #E2EBF0"><p style="font-size:11px;color:#8098A8;margin:0;line-height:1.6">Legacy Letter™ · iFinallyWill.com</p></div>
 </div></body></html>`;
 }
 function btn(href, label) {
@@ -104,40 +104,144 @@ function esc(s) {
   return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// ─── Email copy (localizable) ─────────────────────────────────────────────
+// English is the inline source of truth. emails-i18n.json holds fr/es/pt/hi
+// versions of the SAME keys with the SAME {placeholders}; any missing key
+// falls back to English per-key, so a translation gap can never break email.
+const EN_EMAILS = {
+  invite: {
+    subject: '{owner} named you a trusted contact',
+    subjectReminder: 'Reminder: {owner} named you a trusted contact',
+    pageTitle: 'You have been named a trusted contact',
+    h1: '{owner} has named you their {role}',
+    roleExecutor: 'executor',
+    roleVerifier: 'trusted contact',
+    hi: 'Hi {name},',
+    body: '{owner} has prepared personal messages for their loved ones on Legacy Letter™, and has asked you to help make sure those messages reach the right people at the right time.',
+    bodyExecutor: 'As their executor, one day you may be the person who confirms their passing so their words can be delivered.',
+    bodyVerifier: 'You may one day be asked to help confirm their passing.',
+    bodyEnd: 'There is nothing you need to do today — just confirm your role.',
+    btn: 'Accept this role',
+    foot: 'You will not see any of their private messages while they are alive. We may occasionally remind you that you hold this role and ask you to keep your contact details current.',
+  },
+  reported: {
+    subject: 'Important: please confirm you are still here',
+    pageTitle: 'Important: your account was reported',
+    h1: 'Are you still with us?',
+    hi: 'Hi {name},',
+    body: '{reporter} has reported that you have passed away, which would begin the process of delivering your Legacy Letters™.',
+    bodyStrong: 'If this is a mistake — if you are reading this — please tap the button below within {days} days to stop it.',
+    bodyEnd: 'Nothing will be sent while this window is open.',
+    btn: "I'm still here — cancel this",
+    foot: 'If you do nothing and your trusted contacts confirm, your messages will begin to be delivered as you scheduled them. If you no longer want this person as a contact, sign in and remove them.',
+  },
+  confirm: {
+    subject: 'Please confirm: a passing was reported for {owner}',
+    pageTitle: 'Please confirm a passing',
+    h1: 'A passing has been reported',
+    hi: 'Hi {name},',
+    body: '{reporter} has reported the passing of {owner}. As one of their trusted contacts, your confirmation helps make sure their final messages are only released when it is truly time. Please sign in and confirm or dispute this report.',
+    btn: 'Review and confirm',
+    foot: 'Multiple confirmations are required before anything is delivered. If you believe this is a mistake, please dispute it on the same screen.',
+  },
+  released: {
+    subject: 'A message from {owner}',
+    pageTitle: 'A message from {owner}',
+    h1: '{owner} left you a message',
+    hi: 'Hi {name},',
+    body: '{owner} prepared a personal message for you, to be delivered at this moment. It is waiting safely for you in your private Legacy Letter™ space.',
+    btn: 'Read your message',
+    foot: 'For your privacy, you may be asked to verify your identity before viewing.',
+  },
+  dmsOwner: {
+    subject: 'A gentle check-in from Legacy Letter™',
+    pageTitle: 'A gentle check-in',
+    h1: "Just checking you're okay",
+    body: 'Hi {name}, it\'s been about {days} days since you last checked in on Legacy Letter™. No alarm — we just quietly keep watch so your messages are only ever delivered at the right time. Please open the app and tap "Check in" so we know all is well.',
+    btn: 'Check in now',
+  },
+  dmsExec: {
+    subject: 'Please check on {owner}',
+    pageTitle: 'Please check on someone',
+    h1: 'A quiet heads-up',
+    hi: 'Hi {name},',
+    body: "{owner} named you a trusted contact on Legacy Letter™ and hasn't checked in for about {days} days. This is just a backstop reminder — it does not mean anything has happened. If you're able, please check in on them. If something has happened, you can begin the confirmation process in your portal.",
+    btn: 'Open executor portal',
+  },
+};
+let EMAIL_I18N = {};
+try { EMAIL_I18N = require('./emails-i18n.json'); } catch { /* English-only until generated */ }
+
+// Copy for one template in one language, per-key EN fallback.
+function emailCopy(kind, lang) {
+  const en = EN_EMAILS[kind] || {};
+  const loc = (lang && lang !== 'en' && EMAIL_I18N[lang] && EMAIL_I18N[lang][kind]) || {};
+  return { ...en, ...loc };
+}
+// Fill {placeholders}; values are HTML-escaped (use for HTML contexts).
+function fill(tpl, vars) {
+  return String(tpl || '').replace(/\{(\w+)\}/g, (m, k) => (vars && vars[k] != null ? esc(vars[k]) : m));
+}
+// Same, without escaping (for plain-text subjects).
+function fillPlain(tpl, vars) {
+  return String(tpl || '').replace(/\{(\w+)\}/g, (m, k) => (vars && vars[k] != null ? String(vars[k]) : m));
+}
+// Fill where some vars are pre-rendered HTML (e.g. <strong>-wrapped names).
+function fillRich(tpl, plainVars, htmlVars) {
+  return String(tpl || '').replace(/\{(\w+)\}/g, (m, k) => {
+    if (htmlVars && htmlVars[k] != null) return htmlVars[k];
+    if (plainVars && plainVars[k] != null) return esc(plainVars[k]);
+    return m;
+  });
+}
+function emailSubject(kind, lang, vars, variant) {
+  const c = emailCopy(kind, lang);
+  return fillPlain(variant === 'reminder' ? c.subjectReminder || c.subject : c.subject, vars);
+}
+
+const P = 'font-size:14px;color:#5A6E80;line-height:1.6;margin:0 0 22px';
+const PHI = 'font-size:14px;color:#5A6E80;line-height:1.6;margin:0 0 10px';
+const FOOT = 'font-size:12px;color:#8098A8;line-height:1.6;margin:0';
+
 // ─── Email templates ──────────────────────────────────────────────────────
-function inviteEmail({ ownerName, contactName, role, acceptUrl }) {
-  const roleWord = role === 'executor' ? 'executor' : 'trusted contact';
-  return shell('You have been named a trusted contact', `
-    <h1 style="font-size:22px;color:#0A2A4A;margin:0 0 14px">${esc(ownerName)} has named you their ${esc(roleWord)}</h1>
-    <p style="font-size:14px;color:#5A6E80;line-height:1.6;margin:0 0 10px">Hi ${esc(contactName)},</p>
-    <p style="font-size:14px;color:#5A6E80;line-height:1.6;margin:0 0 22px">${esc(ownerName)} has prepared personal messages for their loved ones on Legacy Message™, and has asked you to help make sure those messages reach the right people at the right time. ${role === 'executor' ? 'As their executor, one day you may be the person who confirms their passing so their words can be delivered.' : 'You may one day be asked to help confirm their passing.'} There is nothing you need to do today — just confirm your role.</p>
-    <p style="text-align:center;margin:0 0 22px">${btn(acceptUrl, 'Accept this role')}</p>
-    <p style="font-size:12px;color:#8098A8;line-height:1.6;margin:0">You will not see any of their private messages while they are alive. We may occasionally remind you that you hold this role and ask you to keep your contact details current.</p>`);
+function inviteEmail({ ownerName, contactName, role, acceptUrl, lang }) {
+  const c = emailCopy('invite', lang);
+  const roleWord = role === 'executor' ? c.roleExecutor : c.roleVerifier;
+  return shell(fillPlain(c.pageTitle, {}), `
+    <h1 style="font-size:22px;color:#0A2A4A;margin:0 0 14px">${fill(c.h1, { owner: ownerName, role: roleWord })}</h1>
+    <p style="${PHI}">${fill(c.hi, { name: contactName })}</p>
+    <p style="${P}">${fill(c.body, { owner: ownerName })} ${role === 'executor' ? c.bodyExecutor : c.bodyVerifier} ${c.bodyEnd}</p>
+    <p style="text-align:center;margin:0 0 22px">${btn(acceptUrl, c.btn)}</p>
+    <p style="${FOOT}">${c.foot}</p>`);
 }
-function deathReportedToOwnerEmail({ ownerName, reporterName, cancelUrl, graceDays }) {
-  return shell('Important: your account was reported', `
-    <h1 style="font-size:22px;color:#B91C1C;margin:0 0 14px">Are you still with us?</h1>
-    <p style="font-size:14px;color:#5A6E80;line-height:1.6;margin:0 0 10px">Hi ${esc(ownerName)},</p>
-    <p style="font-size:14px;color:#5A6E80;line-height:1.6;margin:0 0 22px"><strong>${esc(reporterName)}</strong> has reported that you have passed away, which would begin the process of delivering your Legacy Messages™. <strong>If this is a mistake — if you are reading this — please tap the button below within ${graceDays} days to stop it.</strong> Nothing will be sent while this window is open.</p>
-    <p style="text-align:center;margin:0 0 22px">${btn(cancelUrl, "I'm still here — cancel this")}</p>
-    <p style="font-size:12px;color:#8098A8;line-height:1.6;margin:0">If you do nothing and your trusted contacts confirm, your messages will begin to be delivered as you scheduled them. If you no longer want this person as a contact, sign in and remove them.</p>`);
+function deathReportedToOwnerEmail({ ownerName, reporterName, cancelUrl, graceDays, lang }) {
+  const c = emailCopy('reported', lang);
+  return shell(fillPlain(c.pageTitle, {}), `
+    <h1 style="font-size:22px;color:#B91C1C;margin:0 0 14px">${c.h1}</h1>
+    <p style="${PHI}">${fill(c.hi, { name: ownerName })}</p>
+    <p style="${P}">${fillRich(c.body, {}, { reporter: `<strong>${esc(reporterName)}</strong>` })}</p>
+    <p style="${P}"><strong>${fill(c.bodyStrong, { days: graceDays })}</strong> ${c.bodyEnd}</p>
+    <p style="text-align:center;margin:0 0 22px">${btn(cancelUrl, c.btn)}</p>
+    <p style="${FOOT}">${c.foot}</p>`);
 }
-function confirmRequestEmail({ ownerName, contactName, reporterName, confirmUrl }) {
-  return shell('Please confirm a passing', `
-    <h1 style="font-size:22px;color:#0A2A4A;margin:0 0 14px">A passing has been reported</h1>
-    <p style="font-size:14px;color:#5A6E80;line-height:1.6;margin:0 0 10px">Hi ${esc(contactName)},</p>
-    <p style="font-size:14px;color:#5A6E80;line-height:1.6;margin:0 0 22px"><strong>${esc(reporterName)}</strong> has reported the passing of <strong>${esc(ownerName)}</strong>. As one of their trusted contacts, your confirmation helps make sure their final messages are only released when it is truly time. Please sign in and confirm or dispute this report.</p>
-    <p style="text-align:center;margin:0 0 22px">${btn(confirmUrl, 'Review and confirm')}</p>
-    <p style="font-size:12px;color:#8098A8;line-height:1.6;margin:0">Multiple confirmations are required before anything is delivered. If you believe this is a mistake, please dispute it on the same screen.</p>`);
+function confirmRequestEmail({ ownerName, contactName, reporterName, confirmUrl, lang }) {
+  const c = emailCopy('confirm', lang);
+  return shell(fillPlain(c.pageTitle, {}), `
+    <h1 style="font-size:22px;color:#0A2A4A;margin:0 0 14px">${c.h1}</h1>
+    <p style="${PHI}">${fill(c.hi, { name: contactName })}</p>
+    <p style="${P}">${fillRich(c.body, {}, { reporter: `<strong>${esc(reporterName)}</strong>`, owner: `<strong>${esc(ownerName)}</strong>` })}</p>
+    <p style="text-align:center;margin:0 0 22px">${btn(confirmUrl, c.btn)}</p>
+    <p style="${FOOT}">${c.foot}</p>`);
 }
-function messageReleasedEmail({ ownerName, recipientName, portalUrl, preview }) {
-  return shell(`A message from ${ownerName}`, `
-    <h1 style="font-size:22px;color:#0A2A4A;margin:0 0 14px">${esc(ownerName)} left you a message</h1>
-    <p style="font-size:14px;color:#5A6E80;line-height:1.6;margin:0 0 18px">Hi ${esc(recipientName || 'there')},</p>
-    <p style="font-size:14px;color:#5A6E80;line-height:1.6;margin:0 0 18px">${esc(ownerName)} prepared a personal message for you, to be delivered at this moment. It is waiting safely for you in your private Legacy Message™ space.</p>
+function messageReleasedEmail({ ownerName, recipientName, portalUrl, preview, lang }) {
+  const c = emailCopy('released', lang);
+  return shell(fillPlain(c.pageTitle, { owner: ownerName }), `
+    <h1 style="font-size:22px;color:#0A2A4A;margin:0 0 14px">${fill(c.h1, { owner: ownerName })}</h1>
+    <p style="font-size:14px;color:#5A6E80;line-height:1.6;margin:0 0 18px">${fill(c.hi, { name: recipientName || 'there' })}</p>
+    <p style="font-size:14px;color:#5A6E80;line-height:1.6;margin:0 0 18px">${fill(c.body, { owner: ownerName })}</p>
     ${preview ? `<blockquote style="border-left:3px solid #F5B800;padding-left:14px;margin:0 0 22px;font-style:italic;color:#5A6E80;font-size:14px;line-height:1.6">"${esc(preview)}…"</blockquote>` : ''}
-    <p style="text-align:center;margin:0 0 22px">${btn(portalUrl, 'Read your message')}</p>
-    <p style="font-size:12px;color:#8098A8;line-height:1.6;margin:0">For your privacy, you may be asked to verify your identity before viewing.</p>`);
+    <p style="text-align:center;margin:0 0 22px">${btn(portalUrl, c.btn)}</p>
+    <p style="${FOOT}">${c.foot}</p>`);
 }
 
 // ─── SMS via Twilio REST (no SDK dependency; no-ops without credentials) ──
@@ -178,18 +282,20 @@ function pushAudit(meta, action, actor, detail) {
 }
 
 // ─── Dead-man's-switch escalation emails ──────────────────────────────────
-function dmsOwnerEmail({ ownerName, days, url }) {
-  return shell('A gentle check-in', `
-    <h1 style="font-size:22px;color:#0A2A4A;margin:0 0 14px">Just checking you're okay</h1>
-    <p style="font-size:14px;color:#5A6E80;line-height:1.6;margin:0 0 22px">Hi ${esc(ownerName)}, it's been about ${days} days since you last checked in on Legacy Message™. No alarm — we just quietly keep watch so your messages are only ever delivered at the right time. Please open the app and tap "Check in" so we know all is well.</p>
-    <p style="text-align:center;margin:0 0 8px">${btn(url, 'Check in now')}</p>`);
+function dmsOwnerEmail({ ownerName, days, url, lang }) {
+  const c = emailCopy('dmsOwner', lang);
+  return shell(fillPlain(c.pageTitle, {}), `
+    <h1 style="font-size:22px;color:#0A2A4A;margin:0 0 14px">${c.h1}</h1>
+    <p style="${P}">${fill(c.body, { name: ownerName, days })}</p>
+    <p style="text-align:center;margin:0 0 8px">${btn(url, c.btn)}</p>`);
 }
-function dmsExecutorEmail({ ownerName, contactName, days, portalUrl }) {
-  return shell('Please check on someone', `
-    <h1 style="font-size:22px;color:#0A2A4A;margin:0 0 14px">A quiet heads-up</h1>
-    <p style="font-size:14px;color:#5A6E80;line-height:1.6;margin:0 0 10px">Hi ${esc(contactName)},</p>
-    <p style="font-size:14px;color:#5A6E80;line-height:1.6;margin:0 0 22px"><strong>${esc(ownerName)}</strong> named you a trusted contact on Legacy Message™ and hasn't checked in for about ${days} days. This is just a backstop reminder — it does <strong>not</strong> mean anything has happened. If you're able, please check in on them. If something has happened, you can begin the confirmation process in your portal.</p>
-    <p style="text-align:center;margin:0 0 8px">${btn(portalUrl, 'Open executor portal')}</p>`);
+function dmsExecutorEmail({ ownerName, contactName, days, portalUrl, lang }) {
+  const c = emailCopy('dmsExec', lang);
+  return shell(fillPlain(c.pageTitle, {}), `
+    <h1 style="font-size:22px;color:#0A2A4A;margin:0 0 14px">${c.h1}</h1>
+    <p style="${PHI}">${fill(c.hi, { name: contactName })}</p>
+    <p style="${P}">${fillRich(c.body, { days }, { owner: `<strong>${esc(ownerName)}</strong>` })}</p>
+    <p style="text-align:center;margin:0 0 8px">${btn(portalUrl, c.btn)}</p>`);
 }
 
 // ─── Scheduling: compute when a message is due, from the death anchor ─────
@@ -265,6 +371,7 @@ function enumerateMessages(state) {
         toEmail: r.email || null,
         toPhone: r.phone || null,
         toName: r.name,
+        toLang: r.lang || null,
       });
     }
   });
@@ -336,13 +443,14 @@ async function processDms(user, meta, now, summary) {
   const esc = meta.checkinEscalation || {};
   let changed = false;
 
+  const ownerLang = (meta.legacyLetterState && meta.legacyLetterState._lang) || 'en';
   if (days >= ESCALATE) {
     if (!esc.lastExecutorNudge || now - new Date(esc.lastExecutorNudge).getTime() > REPEAT) {
       for (const c of activeContacts) {
         try {
-          await sendEmail({ to: c.email, subject: `Please check on ${displayName(user)}`, html: dmsExecutorEmail({ ownerName: displayName(user), contactName: c.name, days, portalUrl: `${APP_URL}/executor` }) });
+          await sendEmail({ to: c.email, subject: emailSubject('dmsExec', c.lang, { owner: displayName(user) }), html: dmsExecutorEmail({ ownerName: displayName(user), contactName: c.name, days, portalUrl: `${APP_URL}/executor`, lang: c.lang }) });
         } catch (e) { summary.errors.push(`dms-exec-email ${user.id}: ${e.message}`); }
-        if (c.phone) { try { await sendSMS({ to: c.phone, body: `${displayName(user)} hasn't checked in on Legacy Message for ${days} days. Please check on them: ${APP_URL}/executor` }); } catch (e) { summary.errors.push(`dms-exec-sms: ${e.message}`); } }
+        if (c.phone) { try { await sendSMS({ to: c.phone, body: `${displayName(user)} hasn't checked in on Legacy Letter for ${days} days. Please check on them: ${APP_URL}/executor` }); } catch (e) { summary.errors.push(`dms-exec-sms: ${e.message}`); } }
       }
       esc.lastExecutorNudge = new Date(now).toISOString();
       pushAudit(meta, 'dms_escalated_to_contacts', 'system', `${days} days without check-in`);
@@ -352,9 +460,9 @@ async function processDms(user, meta, now, summary) {
   } else if (days >= REMIND) {
     if (!esc.lastOwnerNudge || now - new Date(esc.lastOwnerNudge).getTime() > REPEAT) {
       const email = primaryEmail(user);
-      if (email) { try { await sendEmail({ to: email, subject: 'A gentle check-in from Legacy Message™', html: dmsOwnerEmail({ ownerName: displayName(user), days, url: APP_URL }) }); } catch (e) { summary.errors.push(`dms-owner-email: ${e.message}`); } }
+      if (email) { try { await sendEmail({ to: email, subject: emailSubject('dmsOwner', ownerLang, {}), html: dmsOwnerEmail({ ownerName: displayName(user), days, url: APP_URL, lang: ownerLang }) }); } catch (e) { summary.errors.push(`dms-owner-email: ${e.message}`); } }
       const ph = ownerPhone(user);
-      if (ph) { try { await sendSMS({ to: ph, body: `A gentle check-in from Legacy Message — please open the app to confirm you're here: ${APP_URL}` }); } catch (e) { summary.errors.push(`dms-owner-sms: ${e.message}`); } }
+      if (ph) { try { await sendSMS({ to: ph, body: `A gentle check-in from Legacy Letter — please open the app to confirm you're here: ${APP_URL}` }); } catch (e) { summary.errors.push(`dms-owner-sms: ${e.message}`); } }
       esc.lastOwnerNudge = new Date(now).toISOString();
       pushAudit(meta, 'dms_reminded_owner', 'system', `${days} days without check-in`);
       changed = true;
@@ -418,20 +526,21 @@ async function processUser(user, now, summary) {
       const targets =
         m.kind === 'recipient'
           ? m.toEmail
-            ? [{ email: m.toEmail, name: m.toName }]
+            ? [{ email: m.toEmail, name: m.toName, lang: m.toLang }]
             : []
-          : recipientsWithEmail.map((r) => ({ email: r.email, name: r.name }));
+          : recipientsWithEmail.map((r) => ({ email: r.email, name: r.name, lang: r.lang }));
 
       try {
         for (const t of targets) {
           await sendEmail({
             to: t.email,
-            subject: `A message from ${ownerName}`,
+            subject: emailSubject('released', t.lang, { owner: ownerName }),
             html: messageReleasedEmail({
               ownerName,
               recipientName: t.name,
               portalUrl: `${APP_URL}/portal`,
               preview: m.text.slice(0, 140),
+              lang: t.lang,
             }),
           });
         }
@@ -442,7 +551,7 @@ async function processUser(user, now, summary) {
         };
         // SMS nudge to recipients who have a phone on file
         if (m.kind === 'recipient' && m.toPhone) {
-          try { await sendSMS({ to: m.toPhone, body: `${ownerName} left you a message on Legacy Message. Read it here: ${APP_URL}/portal` }); } catch (e) { summary.errors.push(`sms ${m.key}: ${e.message}`); }
+          try { await sendSMS({ to: m.toPhone, body: `${ownerName} left you a message on Legacy Letter. Read it here: ${APP_URL}/portal` }); } catch (e) { summary.errors.push(`sms ${m.key}: ${e.message}`); }
         }
         pushAudit(meta, 'message_delivered', 'system', `${m.title} → ${targets.map((t) => t.email).join(', ') || 'portal'}`);
         changed = true;
@@ -497,10 +606,15 @@ module.exports = {
   sendEmail,
   sendSMS,
   pushAudit,
+  emailSubject,
+  emailCopy,
+  EN_EMAILS,
   inviteEmail,
   deathReportedToOwnerEmail,
   confirmRequestEmail,
   messageReleasedEmail,
+  dmsOwnerEmail,
+  dmsExecutorEmail,
   computeDueDate,
   ruleNeedsHuman,
   enumerateMessages,

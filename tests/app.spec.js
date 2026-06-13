@@ -1,183 +1,268 @@
+// E2E suite for Legacy Message™ — covers the password gate, auth gating,
+// welcome flow, i18n, delivery UI, billing, federation (HMAC), portals,
+// legal pages, and email localization. Clerk is mocked at the browser edge
+// (route-abort + window.Clerk stub) so the suite is hermetic and fast;
+// signed HTTP calls exercise the real server-side federation paths.
 const { test, expect } = require('@playwright/test');
-const { clerk, setupClerkTestingToken } = require('@clerk/testing/playwright');
+const crypto = require('crypto');
+require('dotenv').config();
 
-// Test user — must exist in the Clerk dev instance.
-// Create once with: clerk users create --email-address playwright@ifinallywill-test.com
-const TEST_EMAIL = process.env.CLERK_TEST_EMAIL || 'playwright@ifinallywill-test.com';
+const CRON_SECRET = process.env.CRON_SECRET || '';
+const IFW_SECRET = process.env.IFW_LL_WEBHOOK_SECRET || '';
 
-// ── Unauthenticated tests ─────────────────────────────────────────────────
-test.describe('Unauthenticated', () => {
+function hmac(msg) {
+  return 'sha256=' + crypto.createHmac('sha256', IFW_SECRET).update(msg).digest('hex');
+}
 
-  test('welcome screen renders', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
-    const welcome = page.locator('#welcome');
-    await expect(welcome).toBeVisible();
+// Mock Clerk in the page: signedIn=true gives a fake user; false gives none.
+async function mockClerk(page, signedIn) {
+  await page.route('**/clerk.browser.js', (r) => r.abort());
+  await page.addInitScript((isIn) => {
+    window.Clerk = {
+      user: isIn ? { firstName: 'Test', emailAddresses: [{ emailAddress: 'test@example.com' }] } : null,
+      session: { getToken: async () => (isIn ? 'fake-token' : null) },
+      load: async () => {},
+      addListener: () => {},
+      mountUserButton: (el) => { el.textContent = '[user]'; },
+      openSignIn: () => { window.__openedSignIn = true; },
+      openSignUp: () => { window.__openedSignUp = true; },
+    };
+  }, signedIn);
+}
+
+// ─── Password gate ─────────────────────────────────────────────────────────
+test.describe('pre-launch gate', () => {
+  test('page loads are gated; i18n bundle and APIs are not', async ({ baseURL }) => {
+    // Node's fetch — guaranteed credential-free (Playwright request contexts
+    // inherit the project's httpCredentials even when newly created).
+    expect((await fetch(baseURL + '/')).status).toBe(401);
+    expect((await fetch(baseURL + '/executor')).status).toBe(401);
+    expect((await fetch(baseURL + '/i18n.js')).status).toBe(200);
+    expect((await fetch(baseURL + '/api/billing/plans')).status).toBe(200);
   });
-
-  test('welcome has auth buttons once Clerk loads', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
-    // Wait up to 8s for Clerk to inject buttons
-    const signUpBtn = page.locator('#welcomeAuth button', { hasText: /Create|Sign up/i });
-    await expect(signUpBtn).toBeVisible({ timeout: 8000 });
-    const signInBtn = page.locator('#welcomeAuth button', { hasText: /Sign in/i });
-    await expect(signInBtn).toBeVisible({ timeout: 3000 });
-  });
-
-  test('app bar renders brand and score', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
-    const score = page.locator('#top-score-val');
-    await expect(score).toBeVisible();
-    await expect(score).toHaveText('0');
-  });
-
-  test('Clerk script is injected with publishable key', async ({ page }) => {
-    await page.goto('/');
-    const html = await page.content();
-    expect(html).toContain('data-clerk-publishable-key');
-    expect(html).toContain('clerk.browser.js');
-  });
-
-  test('API suggest requires auth (returns 401)', async ({ request }) => {
-    const resp = await request.post('/api/suggest', {
-      data: { mode: 'depth', text: 'test text here', chapId: 'know', chapTitle: 'What I want you to know' }
-    });
-    expect(resp.status()).toBe(401);
-  });
-
-  test('API transcribe requires auth (returns 401)', async ({ request }) => {
-    const resp = await request.post('/api/transcribe');
-    expect(resp.status()).toBe(401);
-  });
-
 });
 
-// ── Authenticated tests ───────────────────────────────────────────────────
-test.describe('Authenticated', () => {
+// ─── Auth gating on APIs ───────────────────────────────────────────────────
+test.describe('API auth', () => {
+  const cases = [
+    ['POST', '/api/suggest'], ['POST', '/api/transcribe'],
+    ['GET', '/api/contacts'], ['POST', '/api/contacts'],
+    ['GET', '/api/billing/status'], ['POST', '/api/billing/checkout'],
+    ['GET', '/api/admin/metrics'], ['GET', '/api/admin/users'], ['POST', '/api/admin/sweep'],
+    ['GET', '/api/portal/inbox'], ['GET', '/api/export'], ['GET', '/api/dashboard'],
+    ['GET', '/api/executor/assignments'], ['POST', '/api/executor/report-death'],
+  ];
+  for (const [method, path] of cases) {
+    test(`${method} ${path} -> 401 unauthenticated`, async ({ request, baseURL }) => {
+      const r = method === 'GET'
+        ? await request.get(baseURL + path)
+        : await request.post(baseURL + path, { data: {} });
+      expect(r.status()).toBe(401);
+    });
+  }
 
-  test.beforeEach(async ({ page }) => {
-    // setupClerkTestingToken registers the route interceptor that injects the
-    // testing token into every FAPI request so Clerk bypasses bot-protection.
-    // Must be called before page.goto() so the interceptor is active when the
-    // page loads and Clerk initialises.
-    await setupClerkTestingToken({ page });
-    // Navigate to the app so Clerk JS loads into the page.
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
-    // Sign in the test user via a backend-issued sign-in token.
-    // clerk.signIn() calls setupClerkTestingToken internally and then
-    // uses signInTokens.createSignInToken() to sign in via ticket strategy.
-    await clerk.signIn({ page, emailAddress: TEST_EMAIL });
+  test('cron sweep: 401 without secret, 200 with', async ({ request, baseURL }) => {
+    expect((await request.get(baseURL + '/api/cron/sweep')).status()).toBe(401);
+    const ok = await request.get(baseURL + '/api/cron/sweep', {
+      headers: { Authorization: `Bearer ${CRON_SECRET}` },
+    });
+    expect(ok.status()).toBe(200);
+    const j = await ok.json();
+    expect(j.ok).toBe(true);
+    expect(typeof j.scanned).toBe('number');
   });
 
-  test('welcome shows Continue after sign-in', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
-    // After auth token is set, Clerk loads and shows the continue button
-    const continueBtn = page.locator('#welcomeAuth button', { hasText: /Continue/i });
-    await expect(continueBtn).toBeVisible({ timeout: 10000 });
+  test('stripe webhook rejects unsigned payloads', async ({ request, baseURL }) => {
+    const r = await request.post(baseURL + '/api/webhooks/stripe', { data: {} });
+    expect(r.status()).toBe(400);
+  });
+});
+
+// ─── Billing catalog ───────────────────────────────────────────────────────
+test('billing plans are public and complete', async ({ request, baseURL }) => {
+  const r = await request.get(baseURL + '/api/billing/plans');
+  expect(r.status()).toBe(200);
+  const { plans } = await r.json();
+  expect(plans.map((p) => p.id).sort()).toEqual(['free', 'lifetime', 'premium_annual', 'premium_monthly']);
+});
+
+// ─── IFW federation (HMAC) ─────────────────────────────────────────────────
+test.describe('IFW federation', () => {
+  test('unsigned requests are rejected', async ({ request, baseURL }) => {
+    expect((await request.post(baseURL + '/api/ifw-grant', { data: { email: 'x@y.com' } })).status()).toBe(401);
+    expect((await request.get(baseURL + '/api/integrations/metrics')).status()).toBe(401);
+    expect((await request.get(baseURL + '/api/integrations/ifinallywill/status?userRef=x@y.com')).status()).toBe(401);
   });
 
-  test('dismiss welcome and enter app', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
-    const continueBtn = page.locator('#welcomeAuth button', { hasText: /Continue/i });
-    await expect(continueBtn).toBeVisible({ timeout: 10000 });
-    await continueBtn.click();
-    await expect(page.locator('#welcome')).toHaveClass(/gone/);
-    // Main app is visible
-    await expect(page.locator('.main')).toBeVisible();
-    await expect(page.locator('.rail')).toBeVisible();
+  test('signed metrics returns the unified-dashboard schema', async ({ request, baseURL }) => {
+    test.skip(!IFW_SECRET, 'IFW_LL_WEBHOOK_SECRET not set');
+    const ts = Math.floor(Date.now() / 1000).toString();
+    const r = await request.get(baseURL + '/api/integrations/metrics', {
+      headers: { 'X-IFW-Timestamp': ts, 'X-IFW-Signature': hmac(`${ts}./api/integrations/metrics`) },
+    });
+    expect(r.status()).toBe(200);
+    const m = await r.json();
+    expect(m.schemaVersion).toBe(1);
+    expect(m.product).toBe('legacy');
+    for (const k of ['revenue', 'subscribers', 'funnel', 'discounts', 'ops']) expect(m[k]).toBeTruthy();
+    expect(m.ops).toHaveProperty('lettersCreated');
   });
 
-  test('chapter navigation works', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
-    const continueBtn = page.locator('#welcomeAuth button', { hasText: /Continue/i });
-    await expect(continueBtn).toBeVisible({ timeout: 10000 });
-    await continueBtn.click();
-    // Click chapter 2
-    const chaps = page.locator('.chap-li:not(.sec-li)');
-    await expect(chaps).toHaveCount(6, { timeout: 5000 });
-    await chaps.nth(1).click();
-    // Verify main area updated
-    const heading = page.locator('.main h2');
-    await expect(heading).toBeVisible();
+  test('grant push rejects tampered signature and stale timestamp', async ({ request, baseURL }) => {
+    test.skip(!IFW_SECRET, 'IFW_LL_WEBHOOK_SECRET not set');
+    const email = 'tamper@example.com';
+    const ts = Math.floor(Date.now() / 1000).toString();
+    const bad = await request.post(baseURL + '/api/ifw-grant', {
+      headers: { 'X-IFW-Timestamp': ts, 'X-IFW-Signature': hmac(`${ts}.${email}`) + '00' },
+      data: { email },
+    });
+    expect(bad.status()).toBe(401);
+    const oldTs = (Math.floor(Date.now() / 1000) - 900).toString();
+    const stale = await request.post(baseURL + '/api/ifw-grant', {
+      headers: { 'X-IFW-Timestamp': oldTs, 'X-IFW-Signature': hmac(`${oldTs}.${email}`) },
+      data: { email },
+    });
+    expect(stale.status()).toBe(401);
   });
 
-  test('text input saves and score updates', async ({ page }) => {
+  test('valid grant for unknown email reports pending', async ({ request, baseURL }) => {
+    test.skip(!IFW_SECRET, 'IFW_LL_WEBHOOK_SECRET not set');
+    const email = `nobody-${Date.now()}@example.com`;
+    const ts = Math.floor(Date.now() / 1000).toString();
+    const r = await request.post(baseURL + '/api/ifw-grant', {
+      headers: { 'X-IFW-Timestamp': ts, 'X-IFW-Signature': hmac(`${ts}.${email}`) },
+      data: { email, source: 'will_grant' },
+    });
+    expect(r.status()).toBe(200);
+    const j = await r.json();
+    expect(j.ok).toBe(true);
+    expect(j.pending).toBe(true);
+  });
+});
+
+// ─── Pages serve ───────────────────────────────────────────────────────────
+test.describe('pages', () => {
+  const pages = [
+    ['/', 'Legacy Letter™'],
+    ['/executor', 'Executor'],
+    ['/portal', 'Legacy Letter™'],
+    ['/alive?token=x', 'still'],
+    ['/admin', 'Admin'],
+    ['/terms', 'Terms of Service'],
+    ['/privacy', 'Privacy Policy'],
+  ];
+  for (const [path, needle] of pages) {
+    test(`${path} serves with expected content`, async ({ request, baseURL }) => {
+      const r = await request.get(baseURL + path);
+      expect(r.status()).toBe(200);
+      expect(await r.text()).toContain(needle);
+    });
+  }
+});
+
+// ─── Welcome / auth flow ───────────────────────────────────────────────────
+test.describe('welcome flow', () => {
+  test('signed out: welcome shows auth buttons and blocks entry', async ({ page }) => {
+    await mockClerk(page, false);
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
-    const continueBtn = page.locator('#welcomeAuth button', { hasText: /Continue/i });
-    await expect(continueBtn).toBeVisible({ timeout: 10000 });
-    await continueBtn.click();
-    // Switch to text mode
-    const textModeBtn = page.locator('.rec-mode button', { hasText: /Type/i });
-    await expect(textModeBtn).toBeVisible({ timeout: 5000 });
-    await textModeBtn.click();
-    // Type enough text to complete the chapter (>30 chars)
-    const textarea = page.locator('.text-area').first();
-    await textarea.fill('I want you to know that I loved every moment we shared together as a family. This is important to me.');
+    await page.waitForTimeout(800);
+    const gone = await page.evaluate(() => document.getElementById('welcome').classList.contains('gone'));
+    expect(gone).toBe(false);
+    const labels = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('#welcomeAuth button')).map((b) => b.textContent.trim()));
+    expect(labels.length).toBe(2);
+    await page.evaluate(() => dismissWelcome());
+    expect(await page.evaluate(() => document.getElementById('welcome').classList.contains('gone'))).toBe(false);
+    expect(await page.evaluate(() => window.__openedSignIn === true)).toBe(true);
+  });
+
+  test('signed in: welcome is bypassed automatically', async ({ page }) => {
+    await mockClerk(page, true);
+    await page.goto('/');
+    await page.waitForTimeout(800);
+    expect(await page.evaluate(() => document.getElementById('welcome').classList.contains('gone'))).toBe(true);
+  });
+});
+
+// ─── i18n ──────────────────────────────────────────────────────────────────
+test.describe('i18n', () => {
+  test('switcher exists; UI translates; user content does not', async ({ page }) => {
+    await mockClerk(page, true);
+    await page.goto('/');
+    await page.waitForTimeout(900);
+    expect(await page.evaluate(() => !!document.getElementById('lmLangSwitch'))).toBe(true);
+
+    await page.evaluate(() => { currentChapter = 0; currentView = 'chapter'; renderMain(); setMode('text'); });
+    await page.evaluate(() => {
+      const ta = document.getElementById('textInput');
+      ta.value = 'My own private words'; ta.dispatchEvent(new Event('input'));
+    });
+    await page.evaluate(() => window.LM_setLang('hi'));
     await page.waitForTimeout(500);
-    // Score should have updated
-    const score = page.locator('#top-score-val');
-    const scoreVal = parseInt(await score.textContent(), 10);
-    expect(scoreVal).toBeGreaterThan(0);
+    const next = await page.evaluate(() => document.querySelector('.nav .next').textContent.trim());
+    expect(next).toContain('अगला'); // "Next chapter" in Hindi
+    expect(await page.evaluate(() => document.getElementById('textInput').value)).toBe('My own private words');
+    await page.evaluate(() => window.LM_setLang('en'));
+    await page.waitForTimeout(400);
+    expect(await page.evaluate(() => document.querySelector('.nav .next').textContent)).toContain('Next chapter');
   });
 
-  test('AI suggest endpoint returns suggestion when authenticated', async ({ page, request }) => {
-    // Get Clerk session token from the page context
-    await setupClerkTestingToken({ page });
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
-    // Call API directly with token from page
-    const token = await page.evaluate(async () => {
-      try { return await window.Clerk?.session?.getToken() || null; } catch { return null; }
-    });
-    if (!token) {
-      test.skip(true, 'Could not get auth token from page');
-      return;
-    }
-    const resp = await request.post('/api/suggest', {
-      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-      data: { mode: 'depth', text: 'I want you to know I tried every day. Even when it was hard.', chapId: 'know', chapTitle: 'What I want you to know' }
-    });
-    expect(resp.status()).toBe(200);
-    const body = await resp.json();
-    expect(body).toHaveProperty('label');
-    expect(body).toHaveProperty('body');
-    expect(body.label.length).toBeGreaterThan(0);
-    expect(body.body.length).toBeGreaterThan(20);
-  });
-
-  test('export keepsake button triggers print or download', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
-    const continueBtn = page.locator('#welcomeAuth button', { hasText: /Continue/i });
-    await expect(continueBtn).toBeVisible({ timeout: 10000 });
-    await continueBtn.click();
-    // Navigate to the export bar (visible at top of sections)
-    const exportBtn = page.locator('.exb-btn', { hasText: /Keepsake/i }).first();
-    if (await exportBtn.isVisible()) {
-      // Just verify it's clickable — actual print dialog can't be tested headlessly
-      await expect(exportBtn).toBeEnabled();
+  test('email templates localize with placeholders filled', async () => {
+    const e = require('../legacy-engine');
+    for (const lang of ['en', 'fr', 'es', 'pt', 'hi']) {
+      const html = e.messageReleasedEmail({ ownerName: 'Olive', recipientName: 'Sam', portalUrl: 'https://x', preview: 'hello', lang });
+      expect(html).not.toMatch(/\{(owner|name|days)\}/);
+      expect(html.length).toBeGreaterThan(500);
+      expect(e.emailSubject('released', lang, { owner: 'Olive' })).toContain('Olive');
     }
   });
+});
 
-  test('sections navigation works', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
-    const continueBtn = page.locator('#welcomeAuth button', { hasText: /Continue/i });
-    await expect(continueBtn).toBeVisible({ timeout: 10000 });
-    await continueBtn.click();
-    // Click first section in left rail
-    const secItem = page.locator('.sec-li').first();
-    await expect(secItem).toBeVisible({ timeout: 5000 });
-    await secItem.click();
-    const heading = page.locator('.main h2');
-    await expect(heading).toBeVisible();
+// ─── Delivery timing UI ────────────────────────────────────────────────────
+test('delivery selector reveals date / life-event / conditions inputs', async ({ page }) => {
+  await mockClerk(page, true);
+  await page.goto('/');
+  await page.waitForTimeout(900);
+  await page.evaluate(() => { currentChapter = 0; currentView = 'chapter'; renderMain(); });
+
+  await page.evaluate(() => { const s = document.getElementById('delivSel'); s.value = 'specific_date'; s.dispatchEvent(new Event('change')); });
+  expect(await page.evaluate(() => !!document.querySelector('#delivRight input[type=date]'))).toBe(true);
+
+  await page.evaluate(() => { const s = document.getElementById('delivSel'); s.value = 'life_event'; s.dispatchEvent(new Event('change')); });
+  expect(await page.evaluate(() => !!document.getElementById('delivEvent'))).toBe(true);
+
+  await page.evaluate(() => { const s = document.getElementById('delivSel'); s.value = 'never_unless'; s.dispatchEvent(new Event('change')); });
+  expect(await page.evaluate(() => !!document.getElementById('delivConds'))).toBe(true);
+});
+
+// ─── Pricing modal ─────────────────────────────────────────────────────────
+test('pricing modal renders all four plans', async ({ page }) => {
+  await mockClerk(page, true);
+  await page.goto('/');
+  await page.waitForTimeout(900);
+  await page.evaluate(() => openPricing());
+  await page.waitForTimeout(700);
+  expect(await page.evaluate(() => document.querySelectorAll('#pricingGrid .price-plan').length)).toBe(4);
+});
+
+// ─── Ground Control return link ────────────────────────────────────────────
+test.describe('GC return link', () => {
+  test('valid fivestarwills return shows the link', async ({ page }) => {
+    await mockClerk(page, true);
+    await page.goto('/?return=' + encodeURIComponent('https://fivestarwills.ca/app/ground-control'));
+    await page.waitForTimeout(700);
+    const el = await page.evaluate(() => {
+      const a = document.getElementById('gcReturn');
+      return { shown: a && a.style.display !== 'none', href: a && a.href };
+    });
+    expect(el.shown).toBe(true);
+    expect(el.href).toContain('fivestarwills.ca');
   });
 
+  test('off-domain return stays hidden', async ({ page }) => {
+    await mockClerk(page, true);
+    await page.goto('/?return=' + encodeURIComponent('https://evil.example.com/phish'));
+    await page.waitForTimeout(700);
+    expect(await page.evaluate(() => document.getElementById('gcReturn').style.display)).toBe('none');
+  });
 });

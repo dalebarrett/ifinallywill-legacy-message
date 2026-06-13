@@ -5,7 +5,7 @@
       "src": "server.js",
       "use": "@vercel/node",
       "config": {
-        "includeFiles": ["*.html", "i18n.js"]
+        "includeFiles": ["*.html", "i18n.js", "emails-i18n.json"]
       }
     }
   ],

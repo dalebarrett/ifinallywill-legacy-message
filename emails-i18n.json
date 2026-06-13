@@ -1,0 +1,246 @@
+{
+ "fr": {
+  "invite": {
+   "subject": "{owner} vous a désigné comme contact de confiance",
+   "subjectReminder": "Rappel : {owner} vous a désigné comme contact de confiance",
+   "pageTitle": "Vous avez été désigné comme contact de confiance",
+   "h1": "{owner} vous a désigné comme {role}",
+   "roleExecutor": "exécuteur testamentaire",
+   "roleVerifier": "contact de confiance",
+   "hi": "Bonjour {name},",
+   "body": "{owner} a préparé des messages personnels pour ses proches sur Legacy Letter™, et vous a demandé d'aider à s'assurer que ces messages parviennent aux bonnes personnes au bon moment.",
+   "bodyExecutor": "En tant qu'exécuteur testamentaire, vous pourriez être un jour la personne qui confirme son décès afin que ses mots puissent être transmis.",
+   "bodyVerifier": "Il se peut qu'on vous demande un jour de contribuer à confirmer son décès.",
+   "bodyEnd": "Vous n'avez rien à faire aujourd'hui — confirmez simplement votre rôle.",
+   "btn": "Accepter ce rôle",
+   "foot": "Vous n'aurez accès à aucun de ses messages privés de son vivant. Nous pourrons occasionnellement vous rappeler que vous occupez ce rôle et vous demander de maintenir vos coordonnées à jour."
+  },
+  "reported": {
+   "subject": "Important : veuillez confirmer que vous êtes toujours là",
+   "pageTitle": "Important : votre compte a fait l'objet d'un signalement",
+   "h1": "Êtes-vous toujours parmi nous ?",
+   "hi": "Bonjour {name},",
+   "body": "{reporter} a signalé votre décès, ce qui déclencherait le processus de transmission de vos Legacy Letters™.",
+   "bodyStrong": "S'il s'agit d'une erreur — si vous lisez ceci — veuillez appuyer sur le bouton ci-dessous dans les {days} jours pour l'annuler.",
+   "bodyEnd": "Rien ne sera envoyé tant que cette fenêtre est ouverte.",
+   "btn": "Je suis toujours là — annuler ceci",
+   "foot": "Si vous ne faites rien et que vos contacts de confiance confirment, vos messages commenceront à être transmis selon la planification que vous avez définie. Si vous ne souhaitez plus que cette personne soit votre contact, connectez-vous et retirez-la."
+  },
+  "confirm": {
+   "subject": "Veuillez confirmer : un décès a été signalé pour {owner}",
+   "pageTitle": "Veuillez confirmer un décès",
+   "h1": "Un décès a été signalé",
+   "hi": "Bonjour {name},",
+   "body": "{reporter} a signalé le décès de {owner}. En tant que l'un de ses contacts de confiance, votre confirmation contribue à s'assurer que ses derniers messages ne sont transmis que lorsque le moment est vraiment venu. Veuillez vous connecter pour confirmer ou contester ce signalement.",
+   "btn": "Examiner et confirmer",
+   "foot": "Plusieurs confirmations sont nécessaires avant qu'un message soit transmis. Si vous pensez qu'il s'agit d'une erreur, veuillez la contester sur le même écran."
+  },
+  "released": {
+   "subject": "Un message de {owner}",
+   "pageTitle": "Un message de {owner}",
+   "h1": "{owner} vous a laissé un message",
+   "hi": "Bonjour {name},",
+   "body": "{owner} a préparé un message personnel pour vous, destiné à vous être transmis en ce moment. Il vous attend en toute sécurité dans votre espace Legacy Letter™ privé.",
+   "btn": "Lire votre message",
+   "foot": "Pour votre confidentialité, il peut vous être demandé de vérifier votre identité avant de le consulter."
+  },
+  "dmsOwner": {
+   "subject": "Un petit signe de vie de Legacy Letter™",
+   "pageTitle": "Un petit signe de vie",
+   "h1": "Nous voulions nous assurer que tout va bien",
+   "body": "Bonjour {name}, cela fait environ {days} jours que vous ne vous êtes pas manifesté sur Legacy Letter™. Pas d'inquiétude — nous veillons discrètement afin que vos messages ne soient transmis qu'au bon moment. Veuillez ouvrir l'application et appuyer sur « Donner signe de vie » pour nous confirmer que tout va bien.",
+   "btn": "Donner signe de vie"
+  },
+  "dmsExec": {
+   "subject": "Veuillez prendre des nouvelles de {owner}",
+   "pageTitle": "Veuillez prendre des nouvelles de quelqu'un",
+   "h1": "Un rappel discret",
+   "hi": "Bonjour {name},",
+   "body": "{owner} vous a désigné comme contact de confiance sur Legacy Letter™ et ne s'est pas manifesté depuis environ {days} jours. Il s'agit simplement d'un rappel de précaution — cela ne signifie pas que quelque chose s'est produit. Si vous en avez la possibilité, veuillez prendre de ses nouvelles. Si quelque chose est arrivé, vous pouvez lancer le processus de confirmation depuis votre portail.",
+   "btn": "Ouvrir le portail de l'exécuteur testamentaire"
+  }
+ },
+ "es": {
+  "invite": {
+   "subject": "{owner} te ha nombrado contacto de confianza",
+   "subjectReminder": "Recordatorio: {owner} te ha nombrado contacto de confianza",
+   "pageTitle": "Has sido nombrado contacto de confianza",
+   "h1": "{owner} te ha nombrado su {role}",
+   "roleExecutor": "albacea",
+   "roleVerifier": "contacto de confianza",
+   "hi": "Hola, {name}:",
+   "body": "{owner} ha preparado mensajes personales para sus seres queridos en Legacy Letter™, y te ha pedido que ayudes a asegurarte de que esos mensajes lleguen a las personas correctas en el momento adecuado.",
+   "bodyExecutor": "Como su albacea, puede que un día seas quien confirme su fallecimiento para que sus palabras puedan ser entregadas.",
+   "bodyVerifier": "Es posible que algún día se te pida ayudar a confirmar su fallecimiento.",
+   "bodyEnd": "Hoy no necesitas hacer nada — solo confirma tu función.",
+   "btn": "Aceptar esta función",
+   "foot": "No verás ninguno de sus mensajes privados mientras estén con vida. De vez en cuando podemos recordarte que tienes esta función y pedirte que mantengas actualizados tus datos de contacto."
+  },
+  "reported": {
+   "subject": "Importante: por favor confirma que sigues aquí",
+   "pageTitle": "Importante: tu cuenta ha sido reportada",
+   "h1": "¿Sigues con nosotros?",
+   "hi": "Hola, {name}:",
+   "body": "{reporter} ha reportado que has fallecido, lo que daría inicio al proceso de entrega de tus Legacy Letters™.",
+   "bodyStrong": "Si esto es un error — si estás leyendo esto — por favor pulsa el botón de abajo en los próximos {days} días para detenerlo.",
+   "bodyEnd": "No se enviará nada mientras este período esté abierto.",
+   "btn": "Sigo aquí — cancelar esto",
+   "foot": "Si no haces nada y tus contactos de confianza lo confirman, tus mensajes comenzarán a entregarse según lo que hayas programado. Si ya no deseas que esta persona sea tu contacto, inicia sesión y elimínala."
+  },
+  "confirm": {
+   "subject": "Por favor confirma: se ha reportado el fallecimiento de {owner}",
+   "pageTitle": "Por favor confirma un fallecimiento",
+   "h1": "Se ha reportado un fallecimiento",
+   "hi": "Hola, {name}:",
+   "body": "{reporter} ha reportado el fallecimiento de {owner}. Como uno de sus contactos de confianza, tu confirmación ayuda a garantizar que sus mensajes finales solo se entreguen cuando verdaderamente sea el momento. Por favor inicia sesión y confirma o disputa este reporte.",
+   "btn": "Revisar y confirmar",
+   "foot": "Se requieren varias confirmaciones antes de que se entregue cualquier cosa. Si crees que esto es un error, por favor dispútalo en la misma pantalla."
+  },
+  "released": {
+   "subject": "Un mensaje de {owner}",
+   "pageTitle": "Un mensaje de {owner}",
+   "h1": "{owner} te dejó un mensaje",
+   "hi": "Hola, {name}:",
+   "body": "{owner} preparó un mensaje personal para ti, para ser entregado en este momento. Te espera de forma segura en tu espacio privado de Legacy Letter™.",
+   "btn": "Leer tu mensaje",
+   "foot": "Para proteger tu privacidad, es posible que se te pida verificar tu identidad antes de verlo."
+  },
+  "dmsOwner": {
+   "subject": "Un saludo afectuoso de Legacy Letter™",
+   "pageTitle": "Un saludo afectuoso",
+   "h1": "Solo queremos saber que estás bien",
+   "body": "Hola, {name}: han pasado aproximadamente {days} días desde la última vez que te conectaste a Legacy Letter™. No es una alarma — simplemente vigilamos en silencio para que tus mensajes solo se entreguen en el momento adecuado. Por favor abre la aplicación y pulsa «Registrar presencia» para que sepamos que todo está bien.",
+   "btn": "Registrar presencia ahora"
+  },
+  "dmsExec": {
+   "subject": "Por favor, comprueba cómo está {owner}",
+   "pageTitle": "Por favor, comprueba cómo está alguien",
+   "h1": "Un aviso discreto",
+   "hi": "Hola, {name}:",
+   "body": "{owner} te nombró contacto de confianza en Legacy Letter™ y no ha registrado presencia desde hace aproximadamente {days} días. Esto es solo un recordatorio de respaldo — no significa que haya ocurrido algo. Si puedes, por favor comprueba cómo está. Si algo ha sucedido, puedes iniciar el proceso de confirmación desde tu portal.",
+   "btn": "Abrir portal del albacea"
+  }
+ },
+ "pt": {
+  "invite": {
+   "subject": "{owner} indicou você como contato de confiança",
+   "subjectReminder": "Lembrete: {owner} indicou você como contato de confiança",
+   "pageTitle": "Você foi indicado como contato de confiança",
+   "h1": "{owner} indicou você como {role}",
+   "roleExecutor": "executor",
+   "roleVerifier": "contato de confiança",
+   "hi": "Olá, {name},",
+   "body": "{owner} preparou mensagens pessoais para seus entes queridos no Legacy Letter™ e pediu que você ajude a garantir que essas mensagens cheguem às pessoas certas no momento certo.",
+   "bodyExecutor": "Como executor, um dia você poderá ser a pessoa que confirma o falecimento para que as palavras dele(a) sejam entregues.",
+   "bodyVerifier": "Um dia você poderá ser solicitado(a) a ajudar a confirmar o falecimento.",
+   "bodyEnd": "Não há nada que você precise fazer hoje — apenas confirme o seu papel.",
+   "btn": "Aceitar este papel",
+   "foot": "Você não terá acesso a nenhuma das mensagens privadas enquanto a pessoa estiver viva. Podemos ocasionalmente lembrá-lo(a) de que você exerce esse papel e pedir que mantenha seus dados de contato atualizados."
+  },
+  "reported": {
+   "subject": "Importante: confirme que você ainda está aqui",
+   "pageTitle": "Importante: sua conta foi reportada",
+   "h1": "Você ainda está com a gente?",
+   "hi": "Olá, {name},",
+   "body": "{reporter} reportou que você faleceu, o que iniciaria o processo de entrega das suas Legacy Letters™.",
+   "bodyStrong": "Se isso for um engano — se você está lendo isto — toque no botão abaixo dentro de {days} dias para cancelar.",
+   "bodyEnd": "Nada será enviado enquanto este prazo estiver aberto.",
+   "btn": "Estou aqui — cancelar isso",
+   "foot": "Se você não fizer nada e seus contatos de confiança confirmarem, suas mensagens começarão a ser entregues conforme você as programou. Se você não quiser mais esta pessoa como contato, entre na sua conta e a remova."
+  },
+  "confirm": {
+   "subject": "Por favor, confirme: um falecimento foi reportado para {owner}",
+   "pageTitle": "Por favor, confirme um falecimento",
+   "h1": "Um falecimento foi reportado",
+   "hi": "Olá, {name},",
+   "body": "{reporter} reportou o falecimento de {owner}. Como um dos contatos de confiança, a sua confirmação ajuda a garantir que as mensagens finais sejam entregues somente quando for realmente o momento. Por favor, entre na sua conta e confirme ou conteste este reporte.",
+   "btn": "Revisar e confirmar",
+   "foot": "Múltiplas confirmações são necessárias antes que qualquer coisa seja entregue. Se você acredita que isso é um engano, por favor conteste na mesma tela."
+  },
+  "released": {
+   "subject": "Uma mensagem de {owner}",
+   "pageTitle": "Uma mensagem de {owner}",
+   "h1": "{owner} deixou uma mensagem para você",
+   "hi": "Olá, {name},",
+   "body": "{owner} preparou uma mensagem pessoal para você, a ser entregue neste momento. Ela está guardada com segurança no seu espaço privado do Legacy Letter™.",
+   "btn": "Ler sua mensagem",
+   "foot": "Para proteger sua privacidade, pode ser solicitado que você verifique sua identidade antes de visualizar."
+  },
+  "dmsOwner": {
+   "subject": "Um check-in gentil do Legacy Letter™",
+   "pageTitle": "Um check-in gentil",
+   "h1": "Só queremos saber se você está bem",
+   "body": "Olá, {name}, já faz cerca de {days} dias desde o seu último check-in no Legacy Letter™. Sem alarme — apenas monitoramos discretamente para que suas mensagens sejam entregues somente no momento certo. Por favor, abra o aplicativo e toque em \"Fazer check-in\" para que saibamos que está tudo bem.",
+   "btn": "Fazer check-in agora"
+  },
+  "dmsExec": {
+   "subject": "Por favor, verifique como está {owner}",
+   "pageTitle": "Por favor, verifique como alguém está",
+   "h1": "Um aviso discreto",
+   "hi": "Olá, {name},",
+   "body": "{owner} indicou você como contato de confiança no Legacy Letter™ e não fez check-in há cerca de {days} dias. Este é apenas um lembrete de precaução — não significa que algo aconteceu. Se puder, entre em contato com a pessoa. Se algo tiver acontecido, você pode iniciar o processo de confirmação no seu portal.",
+   "btn": "Abrir portal do executor"
+  }
+ },
+ "hi": {
+  "invite": {
+   "subject": "{owner} ने आपको एक विश्वसनीय संपर्क नामित किया है",
+   "subjectReminder": "अनुस्मारक: {owner} ने आपको एक विश्वसनीय संपर्क नामित किया है",
+   "pageTitle": "आपको एक विश्वसनीय संपर्क नामित किया गया है",
+   "h1": "{owner} ने आपको अपना {role} नामित किया है",
+   "roleExecutor": "निष्पादक",
+   "roleVerifier": "विश्वसनीय संपर्क",
+   "hi": "नमस्ते {name},",
+   "body": "{owner} ने Legacy Letter™ पर अपने प्रियजनों के लिए व्यक्तिगत संदेश तैयार किए हैं, और आपसे यह सुनिश्चित करने में सहायता माँगी है कि वे संदेश सही समय पर सही लोगों तक पहुँचें।",
+   "bodyExecutor": "उनके निष्पादक के रूप में, हो सकता है कि एक दिन आप ही वह व्यक्ति हों जो उनके जाने की पुष्टि करें, ताकि उनके शब्द पहुँचाए जा सकें।",
+   "bodyVerifier": "एक दिन आपसे उनके जाने की पुष्टि करने में सहायता माँगी जा सकती है।",
+   "bodyEnd": "आज आपको कुछ भी करने की आवश्यकता नहीं है — बस अपनी भूमिका की पुष्टि करें।",
+   "btn": "यह भूमिका स्वीकार करें",
+   "foot": "जब तक वे जीवित हैं, आप उनके कोई भी निजी संदेश नहीं देख पाएँगे। हम कभी-कभी आपको याद दिला सकते हैं कि आप यह भूमिका निभा रहे हैं और आपसे अपनी संपर्क जानकारी अद्यतन रखने का अनुरोध कर सकते हैं।"
+  },
+  "reported": {
+   "subject": "महत्वपूर्ण: कृपया पुष्टि करें कि आप अभी यहाँ हैं",
+   "pageTitle": "महत्वपूर्ण: आपके खाते की सूचना दी गई है",
+   "h1": "क्या आप अभी हमारे साथ हैं?",
+   "hi": "नमस्ते {name},",
+   "body": "{reporter} ने सूचित किया है कि आप दिवंगत हो गए हैं, जिससे आपके Legacy Letters™ पहुँचाने की प्रक्रिया शुरू हो जाएगी।",
+   "bodyStrong": "यदि यह एक गलती है — यदि आप यह पढ़ रहे हैं — तो कृपया इसे रोकने के लिए {days} दिनों के भीतर नीचे दिए गए बटन पर टैप करें।",
+   "bodyEnd": "जब तक यह समय-सीमा खुली है, कुछ भी नहीं भेजा जाएगा।",
+   "btn": "मैं अभी यहाँ हूँ — इसे रद्द करें",
+   "foot": "यदि आप कुछ नहीं करते और आपके विश्वसनीय संपर्क पुष्टि कर देते हैं, तो आपके संदेश उसी समय-सारणी के अनुसार पहुँचाए जाने लगेंगे जो आपने निर्धारित की थी। यदि आप अब इस व्यक्ति को संपर्क के रूप में नहीं रखना चाहते, तो साइन इन करके उन्हें हटा दें।"
+  },
+  "confirm": {
+   "subject": "कृपया पुष्टि करें: {owner} के जाने की सूचना दी गई है",
+   "pageTitle": "कृपया एक निधन की पुष्टि करें",
+   "h1": "एक निधन की सूचना दी गई है",
+   "hi": "नमस्ते {name},",
+   "body": "{reporter} ने {owner} के निधन की सूचना दी है। उनके एक विश्वसनीय संपर्क के रूप में, आपकी पुष्टि यह सुनिश्चित करने में सहायता करती है कि उनके अंतिम संदेश केवल तभी भेजे जाएँ जब वास्तव में उचित समय हो। कृपया साइन इन करें और इस सूचना की पुष्टि करें या उसे अस्वीकार करें।",
+   "btn": "समीक्षा करें और पुष्टि करें",
+   "foot": "कुछ भी पहुँचाए जाने से पहले कई पुष्टियाँ आवश्यक हैं। यदि आपको लगता है कि यह एक गलती है, तो कृपया उसी स्क्रीन पर इसे विवादित करें।"
+  },
+  "released": {
+   "subject": "{owner} का एक संदेश",
+   "pageTitle": "{owner} का एक संदेश",
+   "h1": "{owner} ने आपके लिए एक संदेश छोड़ा है",
+   "hi": "नमस्ते {name},",
+   "body": "{owner} ने आपके लिए एक व्यक्तिगत संदेश तैयार किया था, जो इसी क्षण पहुँचाया जाना था। यह आपके निजी Legacy Letter™ स्थान में सुरक्षित रूप से आपकी प्रतीक्षा कर रहा है।",
+   "btn": "अपना संदेश पढ़ें",
+   "foot": "आपकी गोपनीयता के लिए, देखने से पहले आपसे अपनी पहचान सत्यापित करने के लिए कहा जा सकता है।"
+  },
+  "dmsOwner": {
+   "subject": "Legacy Letter™ की ओर से एक सौम्य जाँच",
+   "pageTitle": "एक सौम्य जाँच",
+   "h1": "बस देख रहे हैं कि आप ठीक हैं",
+   "body": "नमस्ते {name}, Legacy Letter™ पर आपको अंतिम बार चेक इन किए हुए लगभग {days} दिन हो गए हैं। कोई चिंता नहीं — हम बस चुपचाप नज़र रखते हैं ताकि आपके संदेश केवल सही समय पर ही पहुँचाए जाएँ। कृपया ऐप खोलें और \"Check in\" पर टैप करें ताकि हम जान सकें कि सब ठीक है।",
+   "btn": "अभी चेक इन करें"
+  },
+  "dmsExec": {
+   "subject": "कृपया {owner} का हाल जानें",
+   "pageTitle": "कृपया किसी का हाल जानें",
+   "h1": "एक सौम्य सूचना",
+   "hi": "नमस्ते {name},",
+   "body": "{owner} ने आपको Legacy Letter™ पर एक विश्वसनीय संपर्क नामित किया है और लगभग {days} दिनों से चेक इन नहीं किया है। यह केवल एक सावधानी के तौर पर अनुस्मारक है — इसका अर्थ यह नहीं है कि कुछ हुआ है। यदि संभव हो, तो कृपया उनका हाल जानें। यदि कुछ हुआ है, तो आप अपने पोर्टल में पुष्टि की प्रक्रिया शुरू कर सकते हैं।",
+   "btn": "निष्पादक पोर्टल खोलें"
+  }
+ }
+}

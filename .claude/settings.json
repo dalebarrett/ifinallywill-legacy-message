@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "_hubManaged": true,
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude-hub/inbox-hook.js"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -62,7 +62,7 @@ if (SITE_USER && SITE_PASS) {
       const okP = p.length === SITE_PASS.length && crypto.timingSafeEqual(Buffer.from(p), Buffer.from(SITE_PASS));
       if (okU && okP) return next();
     }
-    res.set('WWW-Authenticate', 'Basic realm="Legacy Message private preview"');
+    res.set('WWW-Authenticate', 'Basic realm="Legacy Letter private preview"');
     return res.status(401).send('Authentication required.');
   });
 }
@@ -168,6 +168,21 @@ async function requireAdmin(req, res, next) {
   next();
 }
 
+// Email every admin when something operational needs eyes (no-ops without Resend).
+async function alertAdmins(subject, lines) {
+  const to = adminEmails();
+  if (!to.length) return;
+  const body = `
+    <h1 style="font-size:20px;color:#B91C1C;margin:0 0 14px">${engine.esc(subject)}</h1>
+    <pre style="font-size:12px;color:#1A2F42;background:#F2F5F9;border-radius:10px;padding:14px;white-space:pre-wrap;line-height:1.6">${engine.esc(Array.isArray(lines) ? lines.join('\n') : String(lines))}</pre>
+    <p style="font-size:12px;color:#8098A8">Automated operational alert from Legacy Letter™.</p>`;
+  try {
+    await engine.sendEmail({ to, subject: `[Legacy Letter ops] ${subject}`, html: body });
+  } catch (e) {
+    console.error('alertAdmins failed:', e.message);
+  }
+}
+
 // ─── PREMIUM ENTITLEMENT (only enforced when BILLING_ENFORCE=true) ────────
 async function requirePremium(req, res, next) {
   if (!billing.billingEnforced()) return next(); // gate is off → allow everyone
@@ -188,6 +203,29 @@ async function requirePremium(req, res, next) {
   } catch (err) {
     return res.status(500).json({ error: 'Could not verify subscription' });
   }
+}
+
+// ─── RATE LIMITING ────────────────────────────────────────────────────────
+// Simple fixed-window limiter, keyed per user (or IP for unauthenticated
+// routes). In-memory: on serverless each warm instance keeps its own counters,
+// so the real-world cap is (limit × instances) — still an effective brake on
+// cost abuse (AI calls, email, uploads). Swap for Upstash/Redis at scale.
+const _rlBuckets = new Map();
+function rateLimit(name, max, windowMs) {
+  return (req, res, next) => {
+    const { userId } = getAuth(req);
+    const key = `${name}:${userId || req.headers['x-forwarded-for'] || req.ip || 'anon'}`;
+    const now = Date.now();
+    let b = _rlBuckets.get(key);
+    if (!b || now > b.reset) { b = { count: 0, reset: now + windowMs }; _rlBuckets.set(key, b); }
+    b.count++;
+    if (_rlBuckets.size > 10000) _rlBuckets.clear(); // crude memory guard
+    if (b.count > max) {
+      res.set('Retry-After', String(Math.ceil((b.reset - now) / 1000)));
+      return res.status(429).json({ error: 'Too many requests — please slow down.' });
+    }
+    next();
+  };
 }
 
 // ─── SERVE HTML WITH CLERK SCRIPT INJECTED ───────
@@ -229,7 +267,7 @@ app.get('/i18n.js', (req, res) => {
 });
 
 // ─── AI SUGGESTIONS (auth required) ─────────────
-app.post('/api/suggest', requireAuth, async (req, res) => {
+app.post('/api/suggest', requireAuth, rateLimit('suggest', 30, 10 * 60 * 1000), async (req, res) => {
   const { mode, text, chapId, chapTitle } = req.body;
 
   // Validate mode
@@ -280,7 +318,7 @@ app.post('/api/suggest', requireAuth, async (req, res) => {
 });
 
 // ─── TRANSCRIPTION (auth required) ──────────────
-app.post('/api/transcribe', requireAuth, upload.single('audio'), async (req, res) => {
+app.post('/api/transcribe', requireAuth, rateLimit('transcribe', 20, 10 * 60 * 1000), upload.single('audio'), async (req, res) => {
   const tmpPath = req.file ? req.file.path : null;
 
   if (!tmpPath) {
@@ -405,7 +443,7 @@ app.post('/api/checkin/snooze', requireAuth, async (req, res) => {
 });
 
 // ─── EMAIL DELIVERY ───────────────────────────────
-app.post('/api/send', requireAuth, async (req, res) => {
+app.post('/api/send', requireAuth, rateLimit('send', 10, 60 * 60 * 1000), async (req, res) => {
   const { to, recipientName, chapters, senderName } = req.body;
   if (!to || !Array.isArray(to) || to.length === 0) {
     return res.status(400).json({ error: 'Missing recipient email address' });
@@ -418,7 +456,7 @@ app.post('/api/send', requireAuth, async (req, res) => {
   const emailHtml = buildLegacyLetterEmail({ senderName, recipientName, chapters });
   try {
     const { data, error } = await resendClient.emails.send({
-      from: `Legacy Message <noreply@${process.env.EMAIL_FROM_DOMAIN || 'ifinallywill.com'}>`,
+      from: `Legacy Letter <noreply@${process.env.EMAIL_FROM_DOMAIN || 'ifinallywill.com'}>`,
       to,
       subject: `A personal message from ${senderName || 'someone who loves you'}`,
       html: emailHtml
@@ -450,7 +488,7 @@ function buildLegacyLetterEmail({ senderName, recipientName, chapters }) {
   <div style="max-width:580px;margin:0 auto;background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 4px 40px rgba(10,42,74,.13)">
     <div style="background:linear-gradient(135deg,#0A2A4A 0%,#071E38 100%);padding:42px 48px 36px;text-align:center">
       <div style="display:inline-block;background:rgba(245,180,0,.15);border:1px solid rgba(245,180,0,.4);border-radius:20px;padding:4px 14px;margin-bottom:16px">
-        <span style="color:#F5B800;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase">Legacy Message™</span>
+        <span style="color:#F5B800;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase">Legacy Letter™</span>
       </div>
       <h1 style="color:#fff;font-size:26px;font-weight:900;margin:0 0 10px;line-height:1.3">A message from<br>${name}</h1>
       <p style="color:rgba(255,255,255,.6);font-size:13px;margin:0">Written with love, for ${recipient}</p>
@@ -463,7 +501,7 @@ function buildLegacyLetterEmail({ senderName, recipientName, chapters }) {
     </div>
     <div style="background:#F2F5F9;padding:22px 48px;text-align:center;border-top:1px solid #E2EBF0">
       <p style="font-size:11px;color:#8098A8;margin:0;line-height:1.7">
-        Delivered by <strong style="color:#0A2A4A">Legacy Message™</strong> · iFinallyWill.com<br>
+        Delivered by <strong style="color:#0A2A4A">Legacy Letter™</strong> · iFinallyWill.com<br>
         This message was written and sealed by ${name}.
       </p>
     </div>
@@ -491,13 +529,14 @@ app.get('/api/contacts', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/api/contacts', requireAuth, requirePremium, async (req, res) => {
+app.post('/api/contacts', requireAuth, rateLimit('contacts', 20, 60 * 60 * 1000), requirePremium, async (req, res) => {
   const { userId } = getAuth(req);
-  const { name, email, phone, relationship, role } = req.body || {};
+  const { name, email, phone, relationship, role, lang } = req.body || {};
   if (!name || !email || !email.includes('@')) {
     return res.status(400).json({ error: 'Name and a valid email are required' });
   }
   const cleanRole = role === 'executor' ? 'executor' : 'verifier';
+  const cleanLang = ['en', 'fr', 'es', 'pt', 'hi'].includes(lang) ? lang : 'en';
   try {
     const { user, meta } = await engine.getMeta(userId);
     const contacts = meta.trustedContacts || [];
@@ -507,6 +546,7 @@ app.post('/api/contacts', requireAuth, requirePremium, async (req, res) => {
     const contact = {
       id: newId('tc'),
       name, email, phone: phone || '', relationship: relationship || '',
+      lang: cleanLang,
       role: cleanRole, status: 'invited',
       invitedAt: new Date().toISOString(), acceptedAt: null, clerkUserId: null,
     };
@@ -518,8 +558,8 @@ app.post('/api/contacts', requireAuth, requirePremium, async (req, res) => {
     const token = engine.signToken({ ownerId: userId, contactId: contact.id, email, role: cleanRole, exp: Date.now() + 365 * 24 * 3600 * 1000 });
     await engine.sendEmail({
       to: email,
-      subject: `${engine.displayName(user)} named you a trusted contact`,
-      html: engine.inviteEmail({ ownerName: engine.displayName(user), contactName: name, role: cleanRole, acceptUrl: `${engine.APP_URL}/executor?invite=${encodeURIComponent(token)}` }),
+      subject: engine.emailSubject('invite', cleanLang, { owner: engine.displayName(user) }),
+      html: engine.inviteEmail({ ownerName: engine.displayName(user), contactName: name, role: cleanRole, acceptUrl: `${engine.APP_URL}/executor?invite=${encodeURIComponent(token)}`, lang: cleanLang }),
     });
     res.json({ ok: true, contact });
   } catch (err) {
@@ -528,7 +568,7 @@ app.post('/api/contacts', requireAuth, requirePremium, async (req, res) => {
   }
 });
 
-app.post('/api/contacts/:id/resend', requireAuth, async (req, res) => {
+app.post('/api/contacts/:id/resend', requireAuth, rateLimit('resend', 10, 60 * 60 * 1000), async (req, res) => {
   const { userId } = getAuth(req);
   try {
     const { user, meta } = await engine.getMeta(userId);
@@ -537,8 +577,8 @@ app.post('/api/contacts/:id/resend', requireAuth, async (req, res) => {
     const token = engine.signToken({ ownerId: userId, contactId: contact.id, email: contact.email, role: contact.role, exp: Date.now() + 365 * 24 * 3600 * 1000 });
     await engine.sendEmail({
       to: contact.email,
-      subject: `Reminder: ${engine.displayName(user)} named you a trusted contact`,
-      html: engine.inviteEmail({ ownerName: engine.displayName(user), contactName: contact.name, role: contact.role, acceptUrl: `${engine.APP_URL}/executor?invite=${encodeURIComponent(token)}` }),
+      subject: engine.emailSubject('invite', contact.lang, { owner: engine.displayName(user) }, 'reminder'),
+      html: engine.inviteEmail({ ownerName: engine.displayName(user), contactName: contact.name, role: contact.role, acceptUrl: `${engine.APP_URL}/executor?invite=${encodeURIComponent(token)}`, lang: contact.lang }),
     });
     res.json({ ok: true });
   } catch (err) {
@@ -655,11 +695,12 @@ app.post('/api/executor/report-death', requireAuth, async (req, res) => {
     // Proof-of-life email to the owner (token-authenticated cancel link)
     const cancelToken = engine.signToken({ ownerId, action: 'cancel', exp: Date.now() + (engine.GRACE_DAYS + 7) * 24 * 3600 * 1000 });
     const ownerEmail = engine.primaryEmail(owner);
+    const ownerLang = (meta.legacyLetterState && meta.legacyLetterState._lang) || 'en';
     if (ownerEmail) {
       await engine.sendEmail({
         to: ownerEmail,
-        subject: 'Important: please confirm you are still here',
-        html: engine.deathReportedToOwnerEmail({ ownerName: engine.displayName(owner), reporterName: contact.name, cancelUrl: `${engine.APP_URL}/alive?token=${encodeURIComponent(cancelToken)}`, graceDays: engine.GRACE_DAYS }),
+        subject: engine.emailSubject('reported', ownerLang, {}),
+        html: engine.deathReportedToOwnerEmail({ ownerName: engine.displayName(owner), reporterName: contact.name, cancelUrl: `${engine.APP_URL}/alive?token=${encodeURIComponent(cancelToken)}`, graceDays: engine.GRACE_DAYS, lang: ownerLang }),
       });
     }
     // Ask the other trusted contacts to confirm (M-of-N)
@@ -667,8 +708,8 @@ app.post('/api/executor/report-death', requireAuth, async (req, res) => {
       if (c.id === contact.id || c.status !== 'active' || !c.email) continue;
       await engine.sendEmail({
         to: c.email,
-        subject: `Please confirm: a passing was reported for ${engine.displayName(owner)}`,
-        html: engine.confirmRequestEmail({ ownerName: engine.displayName(owner), contactName: c.name, reporterName: contact.name, confirmUrl: `${engine.APP_URL}/executor` }),
+        subject: engine.emailSubject('confirm', c.lang, { owner: engine.displayName(owner) }),
+        html: engine.confirmRequestEmail({ ownerName: engine.displayName(owner), contactName: c.name, reporterName: contact.name, confirmUrl: `${engine.APP_URL}/executor`, lang: c.lang }),
       });
     }
     res.json({ ok: true, graceUntil, threshold: engine.DEFAULT_THRESHOLD, confirmations: 1 });
@@ -779,7 +820,7 @@ app.get('/api/verification/status', requireAuth, async (req, res) => {
 });
 
 // ─── Owner: proof-of-life cancel (token-authenticated, no login required) ─
-app.post('/api/proof-of-life', async (req, res) => {
+app.post('/api/proof-of-life', rateLimit('pol', 10, 10 * 60 * 1000), async (req, res) => {
   const payload = engine.verifyToken((req.body || {}).token);
   if (!payload || payload.action !== 'cancel' || !payload.ownerId) {
     return res.status(400).json({ error: 'This link is invalid or has expired.' });
@@ -841,7 +882,7 @@ app.get('/api/portal/inbox', requireAuth, async (req, res) => {
 });
 
 // ─── MEDIA: owner uploads a recording for later delivery ─────────────────
-app.post('/api/media/upload', requireAuth, mediaUpload.single('media'), async (req, res) => {
+app.post('/api/media/upload', requireAuth, rateLimit('media', 30, 60 * 60 * 1000), mediaUpload.single('media'), async (req, res) => {
   const { userId } = getAuth(req);
   if (!req.file) return res.status(400).json({ error: 'No file received' });
   try {
@@ -889,6 +930,38 @@ app.get('/api/portal/media', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('portal media:', err.message);
     res.status(500).json({ error: 'Could not load media' });
+  }
+});
+
+// ─── Owner: export all my data as a JSON download ─────────────────────────
+app.get('/api/export', requireAuth, rateLimit('export', 6, 10 * 60 * 1000), async (req, res) => {
+  const { userId } = getAuth(req);
+  try {
+    const { user, meta } = await engine.getMeta(userId);
+    const sub = meta.subscription || {};
+    const out = {
+      exportedAt: new Date().toISOString(),
+      product: 'Legacy Letter',
+      account: {
+        id: user.id,
+        name: engine.displayName(user),
+        email: engine.primaryEmail(user),
+        createdAt: user.createdAt ? new Date(user.createdAt).toISOString() : null,
+      },
+      letter: meta.legacyLetterState || null,
+      trustedContacts: meta.trustedContacts || [],
+      verification: meta.verification || { status: 'active' },
+      delivery: meta.delivery || {},
+      checkin: { lastCheckin: meta.lastCheckin || null, snoozeUntil: meta.dmsSnoozeUntil || null },
+      subscription: { plan: sub.plan || 'free', status: sub.status || 'none', provider: sub.provider || null },
+      ifwGrant: meta.ifwGrant || null,
+      auditLog: meta.auditLog || [],
+    };
+    res.set('Content-Disposition', 'attachment; filename="legacy-message-export.json"');
+    res.json(out);
+  } catch (err) {
+    console.error('export:', err.message);
+    res.status(500).json({ error: 'Could not export your data' });
   }
 });
 
@@ -965,7 +1038,7 @@ app.get('/api/billing/status', requireAuth, async (req, res) => {
 });
 
 // ─── Stripe Checkout + Billing Portal ────────────────────────────────────
-app.post('/api/billing/checkout', requireAuth, async (req, res) => {
+app.post('/api/billing/checkout', requireAuth, rateLimit('checkout', 10, 10 * 60 * 1000), async (req, res) => {
   const { userId } = getAuth(req);
   const { planId, promoCode } = req.body || {};
   try {
@@ -1137,13 +1210,13 @@ app.get('/api/admin/whoami', requireAuth, async (req, res) => {
 app.post('/api/ifw-grant', async (req, res) => {
   const timestamp = req.headers['x-ifw-timestamp'];
   const signature = req.headers['x-ifw-signature'];
-  const { email, source, willOrderId, grantedAt, status } = req.body || {};
+  const { email, source, willOrderId, grantedAt, status, currentPeriodEnd } = req.body || {};
   if (!email) return res.status(400).json({ error: 'Missing email' });
   if (!ifw.verifyGrant({ timestamp, email, signature })) {
     return res.status(401).json({ error: 'Invalid signature' });
   }
   try {
-    const result = await ifw.applyGrant({ email, source, willOrderId, grantedAt, status });
+    const result = await ifw.applyGrant({ email, source, willOrderId, grantedAt, status, currentPeriodEnd });
     res.json({ ok: true, ...result });
   } catch (err) {
     console.error('ifw-grant:', err.message);
@@ -1255,9 +1328,27 @@ app.get('/api/cron/sweep', async (req, res) => {
   try {
     const summary = await engine.processSweep();
     console.log('Cron sweep:', JSON.stringify(summary));
+    if (summary.errors && summary.errors.length) {
+      await alertAdmins(`Daily sweep finished with ${summary.errors.length} error(s)`, [
+        `scanned=${summary.scanned} verified=${summary.verified} delivered=${summary.delivered}`,
+        ...summary.errors,
+      ]);
+    }
     res.json({ ok: true, ...summary });
   } catch (err) {
     console.error('cron sweep:', err.message);
+    await alertAdmins('Daily sweep CRASHED', err.stack || err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin: run the sweep on demand and see the result (visibility + recovery).
+app.post('/api/admin/sweep', requireAdmin, async (req, res) => {
+  try {
+    const summary = await engine.processSweep();
+    console.log('Manual sweep:', JSON.stringify(summary));
+    res.json({ ok: true, ...summary });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
@@ -1287,6 +1378,8 @@ app.get('/executor', servePage('portal-executor.html'));
 app.get('/portal', servePage('portal-recipient.html'));
 app.get('/alive', servePage('portal-alive.html'));
 app.get('/admin', servePage('portal-admin.html'));
+app.get('/terms', servePage('legal-terms.html'));
+app.get('/privacy', servePage('legal-privacy.html'));
 
 // ─── STATIC ASSETS (only from public/ subdir) ────
 // Note: legacy_letter.html is served by the '/' route above
@@ -1297,7 +1390,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Only call app.listen() in local development (not on Vercel).
 if (!process.env.VERCEL) {
   app.listen(PORT, () => {
-    console.log(`\nLegacy Message running at http://localhost:${PORT}\n`);
+    console.log(`\nLegacy Letter running at http://localhost:${PORT}\n`);
   });
 }
 

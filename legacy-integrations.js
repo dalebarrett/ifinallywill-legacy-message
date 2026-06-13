@@ -48,7 +48,7 @@ function verifyGrant({ timestamp, email, signature }) {
 // Apply (or revoke) a will-grant to any Clerk user(s) with this email.
 // If the person hasn't signed up on LL yet there's no user to update — that's
 // fine: the login-time PULL will catch them. Returns {applied, pending}.
-async function applyGrant({ email, source = 'will_grant', willOrderId = null, status = 'active', grantedAt }) {
+async function applyGrant({ email, source = 'will_grant', willOrderId = null, status = 'active', grantedAt, currentPeriodEnd = null }) {
   const lc = String(email).toLowerCase();
   let resp;
   try {
@@ -65,6 +65,7 @@ async function applyGrant({ email, source = 'will_grant', willOrderId = null, st
       willCustomer: status === 'active',
       source, status,
       willOrderId: willOrderId || (meta.ifwGrant && meta.ifwGrant.willOrderId) || null,
+      currentPeriodEnd, // null = perpetual (will_grant/comp); set for stripe_sub grants
       grantedAt: grantedAt || new Date().toISOString(),
     };
     try {
